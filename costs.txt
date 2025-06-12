@@ -1,0 +1,27 @@
+OpenAI Audio Transcription API - Cost Per Minute (2024-2025)
+
+Model                     | Cost per Minute | Notes
+--------------------------|-----------------|----------------------------------
+whisper-1                 | $0.006         | Detailed segments with timestamps
+gpt-4o-transcribe         | $0.006         | Better accuracy, simple JSON format
+gpt-4o-mini-transcribe    | $0.003         | Most economical, good accuracy
+
+Current Audio Collection Analysis:
+- Total files: 38
+- Total duration: 35.91 minutes (2,154.82 seconds)
+
+Cost Estimates for Full Collection:
+- whisper-1:              $0.215 (35.91 × $0.006)
+- gpt-4o-transcribe:      $0.215 (35.91 × $0.006)  
+- gpt-4o-mini-transcribe: $0.108 (35.91 × $0.003)
+
+Savings with gpt-4o-mini: $0.107 (50% cheaper than other models)
+
+Model Trade-offs:
+- whisper-1: Full detailed JSON with segments, tokens, confidence scores
+- gpt-4o-transcribe: Better multilingual accuracy, simpler JSON output
+- gpt-4o-mini-transcribe: Best value, adequate accuracy for most use cases
+
+Recommendation: 
+For personal voicemails, gpt-4o-mini-transcribe offers the best cost/quality ratio.
+Use whisper-1 if you need detailed timestamp segments for further processing.
