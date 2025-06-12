@@ -104,12 +104,20 @@ uv run python transcribe.py audio/file.mp3
 
 ## Audio Conversion
 
-The repository includes a shell script to convert AMR files to MP3:
+The repository includes a flexible shell script to convert various audio formats to MP3:
 
 ```bash
-# Convert all AMR files from source directory to local audio/ directory
+# Convert all audio files from SOURCE_AUDIO directory (from .env)
 ./convert_audio.sh
+
+# Convert specific files (supports AMR, WAV, M4A, FLAC, OGG, AAC, WMA, etc.)
+./convert_audio.sh file1.amr file2.wav file3.m4a
+
+# Convert all audio files by extension in current directory
+./convert_audio.sh *.amr *.wav *.m4a
 ```
+
+**Supported formats**: AMR, WAV, M4A, FLAC, OGG, AAC, WMA, MP3, and other formats supported by ffmpeg.
 
 ## Models and Pricing
 
