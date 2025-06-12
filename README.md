@@ -4,13 +4,13 @@ A powerful Python tool for transcribing audio files using OpenAI's transcription
 
 ## Features
 
-- <� **Smart Audio Chunking**: Automatically splits audio at natural breaks (silence detection)
-- > **Multiple AI Models**: Support for Whisper-1, GPT-4o-transcribe, and GPT-4o-mini-transcribe
-- =� **Flexible Output**: Save to files or output directly to stdout (text or JSON)
-- <� **Context-Aware**: Use prompts to improve accuracy for names, places, and domain-specific terminology
-- =� **Cost-Effective**: Choose from different models based on accuracy needs and budget
-- = **Batch Processing**: Process multiple audio files in a single command
-- =� **Safe Operations**: Prevents accidental overwrites unless explicitly forced
+- **Smart Audio Chunking**: Automatically splits audio at natural breaks (silence detection)
+- **Multiple AI Models**: Support for Whisper-1, GPT-4o-transcribe, and GPT-4o-mini-transcribe
+- **Flexible Output**: Save to files or output directly to stdout (text or JSON)
+- **Context-Aware**: Use prompts to improve accuracy for names, places, and domain-specific terminology
+- **Cost-Effective**: Choose from different models based on accuracy needs and budget
+- **Batch Processing**: Process multiple audio files in a single command
+- **Safe Operations**: Prevents accidental overwrites unless explicitly forced
 
 ## Installation
 
