@@ -1,6 +1,34 @@
 # Audio Transcription Tool
 
-A powerful Python tool for transcribing audio files using OpenAI's transcription models with intelligent chunking, context-aware prompts, and multiple output formats.
+A simple Python tool for transcribing audio files using OpenAI's transcription models with intelligent chunking, context-aware prompts, and multiple output formats.
+
+## Motivation
+
+I created this tool to solve a particular problem I had: I had accumulated a
+large collection of voicemails on my phone that I wanted to preserve and make
+searchable. Using my Visual Voicemail app, I saved each voicemail to Dropbox
+via the "share with" feature. However, these files were in AMR format - a
+compressed audio format that's not widely supported.
+
+The solution required two key steps:
+1. **Format conversion**: Convert AMR files to the more universal MP3 format
+2. **Transcription**: Generate searchable text from the audio content
+
+Along the way, I generalized the tool to support multiple audio formats and use cases beyond voicemails. My ultimate goal is to use this system for capturing and organizing audio notes when exercising, driving, or in other situations where text input isn't practical.
+
+There are various apps that provide transcription as part of their capture process.
+However, I wanted to have a tool that could work on nearly any sort of audio
+input in an app-independent way. 
+
+The openAI APIs are very cost effective, and I wanted to avoid yet another monthly fee for a transcription app.
+
+## Use Cases
+
+- **Voicemail preservation**: Convert and transcribe saved voicemails for archival and search
+- **Audio notes**: Transcribe voice memos recorded while exercising or driving  
+- **Meeting recordings**: Process recorded conversations with context-aware prompts
+- **Podcast/interview processing**: Batch transcribe audio content with timestamps
+- **Family audio archives**: Preserve and transcribe personal audio recordings
 
 ## Features
 
