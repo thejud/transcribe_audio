@@ -42,15 +42,18 @@ Version: 1.0
 """
 
 import argparse
+import hashlib
 import json
 import logging
 import os
+import pickle
 import sys
+import tempfile
 from pathlib import Path
-from typing import List, Tuple, Optional
+from typing import List, Optional, Tuple
 
-from openai import OpenAI
 from dotenv import load_dotenv
+from openai import OpenAI
 from pydub import AudioSegment
 from pydub.silence import split_on_silence
 
@@ -91,6 +94,104 @@ def load_environment() -> OpenAI:
     return OpenAI(api_key=api_key)
 
 
+def get_cache_dir() -> Path:
+    """
+    Get or create the cache directory for audio chunks.
+    
+    Returns:
+        Path: Cache directory path in /tmp/transcribe_cache
+    """
+    cache_dir = Path("/tmp/transcribe_cache")
+    cache_dir.mkdir(exist_ok=True)
+    return cache_dir
+
+
+def get_cache_key(audio_path: Path) -> str:
+    """
+    Generate a cache key based on file path and modification time.
+    
+    Args:
+        audio_path: Path to the audio file
+        
+    Returns:
+        str: Unique cache key for the file
+    """
+    stat = audio_path.stat()
+    content = f"{audio_path.absolute()}_{stat.st_mtime}_{stat.st_size}"
+    return hashlib.md5(content.encode()).hexdigest()
+
+
+def save_chunks_to_cache(chunks: List[AudioSegment], cache_key: str) -> None:
+    """
+    Save audio chunks to cache.
+    
+    Args:
+        chunks: List of audio chunks to cache
+        cache_key: Unique cache key for the chunks
+    """
+    cache_dir = get_cache_dir()
+    cache_file = cache_dir / f"{cache_key}.pkl"
+    
+    # Convert AudioSegments to serializable format
+    chunk_data = []
+    for chunk in chunks:
+        chunk_data.append({
+            'raw_data': chunk.raw_data,
+            'frame_rate': chunk.frame_rate,
+            'sample_width': chunk.sample_width,
+            'channels': chunk.channels
+        })
+    
+    with open(cache_file, 'wb') as f:
+        pickle.dump(chunk_data, f)
+    
+    logging.info(f"Cached {len(chunks)} chunks to {cache_file}")
+
+
+def load_chunks_from_cache(cache_key: str) -> Optional[List[AudioSegment]]:
+    """
+    Load audio chunks from cache.
+    
+    Args:
+        cache_key: Unique cache key for the chunks
+        
+    Returns:
+        List of AudioSegment objects or None if cache miss
+    """
+    cache_dir = get_cache_dir()
+    cache_file = cache_dir / f"{cache_key}.pkl"
+    
+    if not cache_file.exists():
+        return None
+    
+    try:
+        with open(cache_file, 'rb') as f:
+            chunk_data = pickle.load(f)
+        
+        # Reconstruct AudioSegments from cached data
+        chunks = []
+        for data in chunk_data:
+            chunk = AudioSegment(
+                data=data['raw_data'],
+                sample_width=data['sample_width'],
+                frame_rate=data['frame_rate'],
+                channels=data['channels']
+            )
+            chunks.append(chunk)
+        
+        logging.info(f"Loaded {len(chunks)} chunks from cache ({cache_file})")
+        return chunks
+        
+    except Exception as e:
+        logging.warning(f"Failed to load chunks from cache: {str(e)}")
+        # Remove corrupted cache file
+        try:
+            cache_file.unlink()
+        except:
+            pass
+        return None
+
+
 def chunk_audio_by_silence(
     audio_path: Path, 
     min_silence_len: int = 1000, 
@@ -102,7 +203,8 @@ def chunk_audio_by_silence(
     
     This function intelligently splits audio at natural breaks (silence) while
     ensuring chunks don't exceed OpenAI's file size limits. Small chunks are
-    combined to reduce API call overhead.
+    combined to reduce API call overhead. Results are cached to avoid 
+    re-processing large audio files.
     
     Args:
         audio_path: Path to the input audio file
@@ -116,10 +218,23 @@ def chunk_audio_by_silence(
     Raises:
         Exception: If audio file cannot be loaded or processed
     """
+    # Check cache first
+    cache_key = get_cache_key(audio_path)
+    cached_chunks = load_chunks_from_cache(cache_key)
+    
+    if cached_chunks is not None:
+        logging.info(f"Using cached chunks for {audio_path}")
+        return cached_chunks
+    
+    logging.info(f"Building chunks for {audio_path} (not in cache)")
     logging.info(f"Loading audio file: {audio_path}")
     audio = AudioSegment.from_mp3(str(audio_path))
     
-    logging.info("Splitting audio on silence...")
+    audio_duration = len(audio) / 1000.0  # Convert to seconds
+    logging.info(f"Loaded audio: {audio_duration:.1f} seconds, analyzing silence patterns...")
+    logging.info(f"Silence detection parameters: min_silence={min_silence_len}ms, threshold={silence_thresh}dBFS")
+    logging.info("Splitting audio on silence (this may take several minutes for large files)...")
+    
     chunks = split_on_silence(
         audio,
         min_silence_len=min_silence_len,
@@ -127,12 +242,15 @@ def chunk_audio_by_silence(
         keep_silence=500  # Keep 500ms of silence at the beginning and end
     )
     
+    logging.info(f"Silence detection completed, found {len(chunks)} initial segments")
+    
     # Combine small chunks to avoid too many API calls and stay under size limits
+    logging.info(f"Combining segments into chunks (max {max_chunk_size}MB each)...")
     combined_chunks = []
     current_chunk = AudioSegment.empty()
     max_size_bytes = max_chunk_size * 1024 * 1024  # Convert MB to bytes
     
-    for chunk in chunks:
+    for i, chunk in enumerate(chunks):
         # Estimate size (rough approximation)
         estimated_size = len(chunk.raw_data)
         
@@ -143,11 +261,21 @@ def chunk_audio_by_silence(
         else:
             combined_chunks.append(current_chunk)
             current_chunk = chunk
+        
+        # Log progress for large numbers of segments
+        if len(chunks) > 50 and (i + 1) % 20 == 0:
+            logging.info(f"Processing segment {i + 1}/{len(chunks)}...")
     
     if len(current_chunk) > 0:
         combined_chunks.append(current_chunk)
     
-    logging.info(f"Created {len(combined_chunks)} audio chunks")
+    # Calculate total duration of chunks for verification
+    total_chunk_duration = sum(len(chunk) for chunk in combined_chunks) / 1000.0
+    logging.info(f"Created {len(combined_chunks)} audio chunks (total: {total_chunk_duration:.1f}s)")
+    
+    # Cache the chunks for future use
+    save_chunks_to_cache(combined_chunks, cache_key)
+    
     return combined_chunks
 
 
@@ -334,7 +462,18 @@ def transcribe_audio_file(
         logging.error(f"Audio file not found: {audio_path}")
         return
     
+    # Log file size and audio length
+    file_size = audio_path.stat().st_size
     logging.info(f"Processing audio file: {audio_path}")
+    logging.info(f"File size: {file_size:,} bytes ({file_size / (1024*1024):.2f} MB)")
+    
+    # Load audio to get duration
+    try:
+        audio = AudioSegment.from_mp3(str(audio_path))
+        duration_seconds = len(audio) / 1000.0
+        logging.info(f"Audio length: {duration_seconds:.1f} seconds ({duration_seconds/60:.1f} minutes)")
+    except Exception as e:
+        logging.warning(f"Could not determine audio length: {str(e)}")
     
     # Create temporary directory for chunks
     temp_dir = Path("temp_chunks")
@@ -409,6 +548,7 @@ def main() -> None:
     - Output format selection (files, stdout text, stdout JSON)
     - Custom context prompts for improved accuracy
     - Debug logging and force overwrite options
+    - Automatic chunk caching for faster re-processing of large files
     
     Environment variables:
     - OPENAI_API_KEY: Required for API access

@@ -33,6 +33,7 @@ The openAI APIs are very cost effective, and I wanted to avoid yet another month
 ## Features
 
 - **Smart Audio Chunking**: Automatically splits audio at natural breaks (silence detection)
+- **Intelligent Caching**: Caches audio chunks in `/tmp/` to avoid re-processing large files
 - **Multiple AI Models**: Support for Whisper-1, GPT-4o-transcribe, and GPT-4o-mini-transcribe
 - **Flexible Output**: Save to files or output directly to stdout (text or JSON)
 - **Context-Aware**: Use prompts to improve accuracy for names, places, and domain-specific terminology
@@ -198,12 +199,48 @@ Creates two files for each input:
 - `--txt`: Outputs plain text to stdout (logs go to stderr)
 - `--json`: Outputs JSON to stdout (Whisper-1 only, logs go to stderr)
 
+## Audio Chunk Caching
+
+The tool automatically caches processed audio chunks to dramatically speed up re-processing of large audio files. This is especially useful when:
+
+- Re-transcribing files with different models
+- Experimenting with different prompts
+- Processing very large audio files that take significant time to chunk
+
+### How Caching Works
+
+- **Cache Location**: `/tmp/transcribe_cache/`
+- **Cache Key**: Based on file path, modification time, and file size
+- **Automatic Invalidation**: Cache is rebuilt when source file is updated
+- **Diagnostic Output**: Clear logging shows when building vs. using cached chunks
+
+### Cache Behavior
+
+```bash
+# First run - builds and caches chunks
+uv run python transcribe.py large_audio.mp3 --debug
+# Output: "Building chunks for large_audio.mp3 (not in cache)"
+# Output: "Cached 15 chunks to /tmp/transcribe_cache/abc123.pkl"
+
+# Subsequent runs - uses cached chunks
+uv run python transcribe.py large_audio.mp3 --debug  
+# Output: "Using cached chunks for large_audio.mp3"
+# Output: "Loaded 15 chunks from cache (/tmp/transcribe_cache/abc123.pkl)"
+```
+
+### Cache Management
+
+- Cache files are automatically cleaned up when corrupted
+- Cache is invalidated when source files are modified
+- Manual cache clearing: `rm -rf /tmp/transcribe_cache/`
+- Cache files use minimal disk space (typically <1MB per audio file)
+
 ## Advanced Usage
 
 ### Debug Mode
 
 ```bash
-# Enable detailed logging
+# Enable detailed logging (shows cache hits/misses)
 uv run python transcribe.py audio/file.mp3 --debug
 ```
 
