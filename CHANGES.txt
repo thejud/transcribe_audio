@@ -1,0 +1,180 @@
+# CHANGES.txt - Transcribe Voicemails Project
+
+## Version 2.1.0 - 2025-06-15
+
+### New Features
+
+#### transcribe.py
+- Added `-o/--out-dir` parameter to specify custom output directory for transcription files
+- Added `--complex-json` flag to control JSON output generation (replaces automatic JSON creation)
+- Enhanced output directory handling with automatic parent directory creation
+- Updated help text and usage examples to reflect new options
+
+#### post_process.py  
+- Added `--out-dir` parameter for specifying output directory
+- Added `--inplace` option for safe in-place file processing (overwrites input only on success)
+- Added `-E/--extension` parameter to add suffix to output filenames before file extension
+- Made output options mutually exclusive (--output, --out-dir, --inplace) for clarity
+- Enhanced error handling and validation for output operations
+- Updated documentation and usage examples
+
+### New Test Suites
+
+#### test_transcribe.py
+- Comprehensive test suite for transcription accuracy validation
+- Uses OpenAI text-to-speech API to generate known test audio content
+- Tests both MP3 and WAV formats with multiple transcription models
+- Validates JSON structure when using --complex-json flag
+- Includes word-level accuracy metrics and name recognition testing
+- Test audio files preserved as permanent fixtures in test_audio/ directory
+- Added argument parsing with --regenerate and --debug options
+- Replaced print statements with proper logging module usage
+- **NEW**: Added automatic cleanup of generated .txt and .json files from test_audio directory
+- **NEW**: Cleanup runs before and after tests to maintain clean test environment
+
+#### test_output_options.py
+- Dedicated test suite for new output directory and file options
+- Tests transcribe.py --out-dir functionality with nested directory creation
+- Tests post_process.py --out-dir, --extension, and --inplace options
+- Validates error conditions and mutually exclusive option handling
+- Includes edge case testing for deep directory paths and file permissions
+- Uses temporary directories to avoid polluting the working directory
+- **NEW**: Added automatic cleanup of generated .txt and .json files from test_audio directory
+- **NEW**: Cleanup runs before and after tests to maintain clean test environment
+
+### Documentation Updates
+
+#### README.md
+- Added comprehensive "Post-Processing" section with usage examples
+- Updated "Output Options" section to include --out-dir parameter
+- Enhanced "Testing" section with new test suite information
+- Updated "Test Coverage" to reflect new functionality validation
+- Added examples for all new command-line options
+
+#### TESTING.md
+- New comprehensive testing guide document
+- Detailed explanation of test coverage and validation criteria
+- Command-line options and usage examples for test suites
+- Troubleshooting section for common testing issues
+- Documentation of test file persistence and caching behavior
+
+### Behavioral Changes
+
+#### JSON Output (Breaking Change)
+- **BEFORE**: transcribe.py automatically created both .txt and .json files for every transcription
+- **AFTER**: transcribe.py only creates .txt files by default, requires --complex-json flag for JSON output
+- This change reduces clutter and gives users explicit control over output formats
+
+#### Output Directory Flexibility
+- Both transcribe.py and post_process.py now support custom output directories
+- Automatic creation of parent directories when they don't exist
+- Maintains backward compatibility when no output directory is specified
+
+### Technical Improvements
+
+#### Code Quality
+- Enhanced error handling and validation across both tools
+- Improved logging with proper logging module usage instead of print statements
+- Added comprehensive type hints and docstrings
+- Better separation of concerns between file I/O and processing logic
+
+#### Key Functions Added/Modified
+
+**transcribe.py:**
+- `transcribe_audio_file()`: Added `out_dir` parameter for custom output directories
+- `parse_args()`: Added `--out-dir` and `--complex-json` argument parsing
+- `main()`: Enhanced output directory handling and path resolution
+
+**post_process.py:**
+- `main_async()`: Complete restructure of output handling logic
+- `parse_args()`: Added mutually exclusive output group with `--out-dir`, `--inplace`, `--extension`
+- Enhanced file path generation with suffix insertion before extensions
+
+**test_transcribe.py:**
+- `setup_logging()`: Professional logging configuration
+- `generate_test_audio_file()`: OpenAI TTS integration for test audio creation
+- `run_transcription()`: Subprocess management for transcription testing
+- `validate_transcription_output()`: Comprehensive output validation
+- `calculate_word_accuracy()`: Accuracy metrics calculation
+- `parse_args()`: Argument parsing with `--regenerate` and `--debug` options
+- `cleanup_generated_files()`: **NEW** - Automatic cleanup of .txt and .json files from test_audio directory
+
+**test_output_options.py:**
+- `test_transcribe_output_directory()`: Output directory functionality validation
+- `test_post_process_extension_suffix()`: Extension suffix testing
+- `test_post_process_inplace()`: In-place processing safety testing
+- `test_error_conditions()`: Edge case and error condition testing
+- `cleanup_test_audio_generated_files()`: **NEW** - Automatic cleanup of .txt and .json files from test_audio directory
+
+#### Testing Infrastructure
+- Robust test framework with permanent test fixtures
+- Integration with OpenAI APIs for realistic test scenarios
+- Comprehensive validation of output formats and file structures
+- Automated test discovery and execution capabilities
+- Word-level accuracy metrics and JSON structure validation
+- Organized all test files in dedicated `test/` directory for better project structure
+
+### Dependencies
+- No new external dependencies added
+- Leverages existing OpenAI, pydub, and other established dependencies
+- Test suites use built-in Python modules where possible
+
+### File Statistics
+- **Modified Files**: 7 files changed, 2,054 insertions(+), 334 deletions(-)
+  - transcribe.py: ~76 lines added (output directory support, JSON control)
+  - post_process.py: Major enhancements (~585 lines, restructured output handling)
+  - README.md: ~91 lines added (documentation for new features)
+  - pyproject.toml: 5 lines added (dependency updates)
+  - uv.lock: 1,140 lines added (dependency lock file updates)
+  - verify_text_integrity.py: ~490 lines enhanced
+  - .gitignore: 1 line added
+
+- **New Files Added**: 1,128 total lines
+  - test/test_transcribe.py: 520 lines (comprehensive transcription testing)
+  - test/test_output_options.py: 468 lines (output options testing)  
+  - TESTING.md: 140 lines (testing documentation)
+  - test/test_audio/: Directory containing permanent test audio fixtures
+
+### Git History Integration
+- Based on commit cf7b836: "add post-processing tools and dependencies"
+- Represents significant expansion of testing infrastructure and user control features
+
+### Migration Guide
+
+#### For existing users:
+1. **JSON Output Change**: Add `--complex-json` flag if you need JSON files with timestamps
+2. **Directory Organization**: Use `--out-dir` to organize outputs into specific directories
+3. **Post-Processing**: Use new `--extension` option to add suffixes like "_cleaned" or "_processed"
+4. **In-Place Processing**: Use `--inplace --verify` for safe file replacement
+
+#### Examples of new usage patterns:
+```bash
+# Old: Always created both .txt and .json
+python transcribe.py audio.mp3
+
+# New: Only creates .txt (add --complex-json for JSON)  
+python transcribe.py audio.mp3
+python transcribe.py audio.mp3 --complex-json
+
+# New: Organize outputs
+python transcribe.py audio.mp3 --out-dir transcriptions/
+python post_process.py transcript.txt --extension "_clean"
+python post_process.py transcript.txt --inplace --verify
+```
+
+### Testing
+
+All new functionality is covered by comprehensive test suites:
+- Run `cd test && python test_transcribe.py` for transcription accuracy tests
+- Run `cd test && python test_output_options.py` for output directory and file option tests
+- Both test suites include debug logging and proper error reporting
+- All test files organized in dedicated `test/` directory with `test_audio/` subdirectory for fixtures
+
+---
+
+## Previous Versions
+
+### Version 2.0.0 - [Prior to current changes]
+- Initial post-processing functionality
+- Basic transcription capabilities
+- Foundation for current enhancements

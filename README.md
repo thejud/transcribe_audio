@@ -1,6 +1,6 @@
 # Audio Transcription Tool
 
-A simple Python tool for transcribing audio files using OpenAI's transcription models with intelligent chunking, context-aware prompts, and multiple output formats.
+A simple Python tool for transcribing audio files (MP3, M4A, WAV, FLAC, etc.) using OpenAI's transcription models with intelligent chunking, context-aware prompts, and multiple output formats.
 
 ## Motivation
 
@@ -35,7 +35,7 @@ The openAI APIs are very cost effective, and I wanted to avoid yet another month
 - **Smart Audio Chunking**: Automatically splits audio at natural breaks (silence detection)
 - **Intelligent Caching**: Caches audio chunks in `/tmp/` to avoid re-processing large files
 - **Multiple AI Models**: Support for Whisper-1, GPT-4o-transcribe, and GPT-4o-mini-transcribe
-- **Flexible Output**: Save to files or output directly to stdout (text or JSON)
+- **Flexible Output**: Save to files (text only by default, optional JSON) or output directly to stdout
 - **Context-Aware**: Use prompts to improve accuracy for names, places, and domain-specific terminology
 - **Cost-Effective**: Choose from different models based on accuracy needs and budget
 - **Batch Processing**: Process multiple audio files in a single command
@@ -88,21 +88,24 @@ The openAI APIs are very cost effective, and I wanted to avoid yet another month
 ### Basic Transcription
 
 ```bash
-# Transcribe a single file (uses GPT-4o-transcribe by default)
+# Transcribe a single file (creates .txt file only by default)
 uv run python transcribe.py audio/voicemail.mp3
 
-# Transcribe multiple files
-uv run python transcribe.py audio/*.mp3
+# Transcribe with JSON output containing timestamps and segments
+uv run python transcribe.py audio/voicemail.mp3 --complex-json
+
+# Transcribe multiple files (supports MP3, M4A, WAV, etc.)
+uv run python transcribe.py audio/*.mp3 audio/*.m4a
 ```
 
 ### Model Selection
 
 ```bash
 # Use GPT-4o-mini (most cost-effective)
-uv run python transcribe.py audio/file.mp3 --mini
+uv run python transcribe.py audio/file.m4a --mini
 
 # Use Whisper-1 (detailed segments)
-uv run python transcribe.py audio/file.mp3 --model whisper-1
+uv run python transcribe.py audio/file.wav --model whisper-1
 
 # Use GPT-4o-transcribe (default, good accuracy)
 uv run python transcribe.py audio/file.mp3 --4o
@@ -117,6 +120,12 @@ uv run python transcribe.py audio/file.mp3 --txt
 # Output JSON to stdout (Whisper-1 only)
 uv run python transcribe.py audio/file.mp3 --model whisper-1 --json
 
+# Save both text and JSON files (with timestamps and segments)
+uv run python transcribe.py audio/file.mp3 --complex-json
+
+# Save output to specific directory
+uv run python transcribe.py audio/file.mp3 --out-dir transcriptions/
+
 # Force overwrite existing files
 uv run python transcribe.py audio/file.mp3 --force
 ```
@@ -129,6 +138,30 @@ uv run python transcribe.py audio/file.mp3 --prompt "Names: Jud (not Judge). Tec
 
 # Default prompt from .env is used automatically if no --prompt specified
 uv run python transcribe.py audio/file.mp3
+```
+
+## Post-Processing
+
+The repository includes a post-processing tool (`post_process.py`) to clean up and format transcripts:
+
+```bash
+# Basic transcript formatting
+uv run python post_process.py transcript.txt
+
+# Voice memo summarization
+uv run python post_process.py memo.txt --memo
+
+# Save to specific directory
+uv run python post_process.py transcript.txt --out-dir processed/
+
+# Add suffix to output filename
+uv run python post_process.py transcript.txt --extension "_cleaned"
+
+# Process in-place (overwrite original file)
+uv run python post_process.py transcript.txt --inplace
+
+# Combine with verification for safety
+uv run python post_process.py transcript.txt --inplace --verify
 ```
 
 ## Audio Conversion
@@ -190,7 +223,10 @@ DEFAULT_PROMPT=Names: Jud (not Judge), [family names with alternatives]. Places:
 
 ### File Output (Default)
 
-Creates two files for each input:
+By default, creates one file for each input:
+- `filename.txt`: Plain text transcription
+
+With `--complex-json` flag, creates two files:
 - `filename.txt`: Plain text transcription
 - `filename.json`: JSON with timestamps and metadata
 
@@ -249,6 +285,9 @@ uv run python transcribe.py audio/file.mp3 --debug
 ```bash
 # Process all files with mini model and text output
 uv run python transcribe.py audio/*.mp3 --mini --txt > all_transcriptions.txt
+
+# Process all files and generate both text and JSON outputs
+uv run python transcribe.py audio/*.mp3 --complex-json
 ```
 
 ### Pipeline Integration
@@ -289,6 +328,42 @@ The tool handles common errors gracefully:
 # View all available options
 uv run python transcribe.py --help
 ```
+
+## Testing
+
+The project includes a comprehensive test suite that validates transcription accuracy:
+
+```bash
+# Run the main transcription test suite
+cd test && python test_transcribe.py
+
+# Regenerate test audio files and run tests
+cd test && python test_transcribe.py --regenerate
+
+# Test output directory and file options
+cd test && python test_output_options.py
+
+# Enable debug logging for detailed test information
+cd test && python test_transcribe.py --debug
+
+# View all available options
+cd test && python test_transcribe.py --help
+```
+
+### Test Coverage
+
+The test suite validates:
+- **Basic transcription accuracy** with known content
+- **Both MP3 and WAV format support** 
+- **Text-only vs JSON output modes** (--complex-json flag)
+- **Output directory functionality** (--out-dir parameter)
+- **Post-processing options** (--inplace, --extension, --out-dir)
+- **Name recognition** for challenging names like "Jud" vs "Judge"
+- **Technical terminology** transcription
+- **JSON structure validation** when using --complex-json
+- **Error handling** and edge cases
+
+Test audio files are generated using OpenAI's text-to-speech API and preserved as permanent fixtures in the `test/test_audio/` directory for consistent testing across runs.
 
 ## Contributing
 

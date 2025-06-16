@@ -12,3 +12,4 @@ wheels/
 .claude
 audio
 .post_process_cache
+tmp

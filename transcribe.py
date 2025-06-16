@@ -8,7 +8,7 @@ transcription models (Whisper-1, GPT-4o-transcribe, GPT-4o-mini-transcribe).
 
 Features:
 - Automatic audio chunking based on silence detection
-- Multiple output formats (text files, JSON with timestamps, stdout)
+- Multiple output formats (text files, optional JSON with timestamps, stdout)
 - Context-aware transcription using prompts for improved accuracy
 - Support for multiple OpenAI transcription models
 - Batch processing of multiple audio files
@@ -18,8 +18,11 @@ The tool is specifically designed for transcribing voicemails and personal audio
 recordings with family-specific context for improved name and terminology recognition.
 
 Usage:
-    # Basic transcription with default settings
+    # Basic transcription with default settings (creates .txt file only)
     python transcribe.py audio/file.mp3
+
+    # Include JSON output with timestamps
+    python transcribe.py audio/file.mp3 --complex-json
 
     # Text output to stdout
     python transcribe.py audio/file.mp3 --txt
@@ -233,7 +236,7 @@ def chunk_audio_by_silence(
 
     logging.info(f"Building chunks for {audio_path} (not in cache)")
     logging.info(f"Loading audio file: {audio_path}")
-    audio = AudioSegment.from_mp3(str(audio_path))
+    audio = AudioSegment.from_file(str(audio_path))
 
     audio_duration = len(audio) / 1000.0  # Convert to seconds
     logging.info(
@@ -478,6 +481,8 @@ def transcribe_audio_file(
     model: str = "gpt-4o-transcribe",
     output_txt: bool = False,
     output_json: bool = False,
+    complex_json: bool = False,
+    out_dir: Optional[Path] = None,
     prompt: Optional[str] = None,
 ) -> None:
     """
@@ -494,6 +499,8 @@ def transcribe_audio_file(
         model: OpenAI transcription model to use
         output_txt: Print text output to stdout instead of writing files
         output_json: Print JSON output to stdout instead of writing files
+        complex_json: Write JSON file with timestamps and segments (in addition to txt)
+        out_dir: Optional output directory for result files (default: same as input)
         prompt: Context or guidance for transcription accuracy
 
     Note:
@@ -513,7 +520,7 @@ def transcribe_audio_file(
 
     # Load audio to get duration
     try:
-        audio = AudioSegment.from_mp3(str(audio_path))
+        audio = AudioSegment.from_file(str(audio_path))
         duration_seconds = len(audio) / 1000.0
         logging.info(
             f"Audio length: {duration_seconds:.1f} seconds ({duration_seconds/60:.1f} minutes)"
@@ -546,32 +553,41 @@ def transcribe_audio_file(
         else:
             # Save results to files
             base_name = audio_path.stem
-            txt_path = audio_path.parent / f"{base_name}.txt"
-            json_path = audio_path.parent / f"{base_name}.json"
+            output_dir = out_dir if out_dir else audio_path.parent
+            # Ensure output directory exists
+            output_dir.mkdir(parents=True, exist_ok=True)
+            
+            txt_path = output_dir / f"{base_name}.txt"
+            json_path = (
+                output_dir / f"{base_name}.json" if complex_json else None
+            )
 
             # Check if files already exist and force flag is not set
-            if not force and (txt_path.exists() or json_path.exists()):
-                existing_files = []
+            existing_files = []
+            if not force:
                 if txt_path.exists():
                     existing_files.append(str(txt_path))
-                if json_path.exists():
+                if json_path and json_path.exists():
                     existing_files.append(str(json_path))
-                logging.warning(
-                    f"Output files already exist: {', '.join(existing_files)}. "
-                    "Use --force to overwrite."
-                )
-                return
+                if existing_files:
+                    logging.warning(
+                        f"Output files already exist: {', '.join(existing_files)}. "
+                        "Use --force to overwrite."
+                    )
+                    return
 
             # Write transcription results
             with open(txt_path, "w", encoding="utf-8") as f:
                 f.write(plain_text)
 
-            with open(json_path, "w", encoding="utf-8") as f:
-                json.dump(json_result, f, indent=2, ensure_ascii=False)
+            if complex_json:
+                with open(json_path, "w", encoding="utf-8") as f:
+                    json.dump(json_result, f, indent=2, ensure_ascii=False)
 
-            logging.info(
-                f"Transcription completed. Output files: {txt_path}, {json_path}"
-            )
+            output_files = str(txt_path)
+            if complex_json:
+                output_files += f", {json_path}"
+            logging.info(f"Transcription completed. Output files: {output_files}")
 
     except Exception as e:
         logging.error(f"Error processing {audio_path}: {str(e)}")
@@ -597,7 +613,8 @@ def parse_args() -> argparse.Namespace:
         description="Transcribe audio files using OpenAI transcription API",
         epilog="""
 Examples:
-  %(prog)s audio/voicemail.mp3                    # Basic transcription
+  %(prog)s audio/voicemail.mp3                    # Basic transcription (txt only)
+  %(prog)s audio/voicemail.mp3 --complex-json     # Include JSON with timestamps
   %(prog)s audio/*.mp3 --txt                      # Batch to stdout
   %(prog)s audio/file.mp3 --mini                  # Use cheaper model
   %(prog)s audio/file.mp3 --prompt "Names: Jud"   # Custom context
@@ -653,6 +670,20 @@ Examples:
         "--json",
         action="store_true",
         help="Print JSON output to stdout instead of writing files (whisper-1 only)",
+    )
+
+    # Complex JSON output option (not mutually exclusive with output formats)
+    parser.add_argument(
+        "--complex-json",
+        action="store_true",
+        help="Write JSON file with timestamps and segments (in addition to txt file)",
+    )
+    
+    # Output directory option
+    parser.add_argument(
+        "-o", "--out-dir",
+        type=str,
+        help="Output directory for result files (default: same directory as input audio)",
     )
 
     # Context/prompt options
@@ -719,6 +750,9 @@ def main() -> None:
     # Process each audio file
     for audio_file_path in args.audio_files:
         audio_path = Path(audio_file_path)
+        # Convert out_dir to Path if provided
+        out_dir = Path(args.out_dir) if args.out_dir else None
+        
         transcribe_audio_file(
             audio_path,
             client,
@@ -727,6 +761,8 @@ def main() -> None:
             args.model,
             args.txt,
             args.json,
+            args.complex_json,
+            out_dir,
             prompt,
         )
 
