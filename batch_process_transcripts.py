@@ -294,9 +294,7 @@ def generate_validation_report(
             f.write(
                 "across different validation criteria. Semantic modes (scores of 1.0000)\n"
             )
-            f.write(
-                "indicate perfect preservation of meaning and content.\n\n"
-            )
+            f.write("indicate perfect preservation of meaning and content.\n\n")
             f.write("### Recommendation:\n")
             f.write("✅ Use semantic or comprehensive mode for validation\n")
             f.write(

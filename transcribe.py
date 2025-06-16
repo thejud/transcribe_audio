@@ -556,11 +556,9 @@ def transcribe_audio_file(
             output_dir = out_dir if out_dir else audio_path.parent
             # Ensure output directory exists
             output_dir.mkdir(parents=True, exist_ok=True)
-            
+
             txt_path = output_dir / f"{base_name}.txt"
-            json_path = (
-                output_dir / f"{base_name}.json" if complex_json else None
-            )
+            json_path = output_dir / f"{base_name}.json" if complex_json else None
 
             # Check if files already exist and force flag is not set
             existing_files = []
@@ -678,10 +676,11 @@ Examples:
         action="store_true",
         help="Write JSON file with timestamps and segments (in addition to txt file)",
     )
-    
+
     # Output directory option
     parser.add_argument(
-        "-o", "--out-dir",
+        "-o",
+        "--out-dir",
         type=str,
         help="Output directory for result files (default: same directory as input audio)",
     )
@@ -752,7 +751,7 @@ def main() -> None:
         audio_path = Path(audio_file_path)
         # Convert out_dir to Path if provided
         out_dir = Path(args.out_dir) if args.out_dir else None
-        
+
         transcribe_audio_file(
             audio_path,
             client,

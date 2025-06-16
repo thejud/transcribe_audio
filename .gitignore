@@ -13,3 +13,5 @@ wheels/
 audio
 .post_process_cache
 tmp
+CLAUDE.local.md
+private

@@ -803,10 +803,11 @@ Examples:
         action="store_true",
         help="Overwrite the input file with processed result (only on successful processing)",
     )
-    
+
     # Extension option
     parser.add_argument(
-        "-E", "--extension",
+        "-E",
+        "--extension",
         help="Suffix to add to output filename before the file extension (e.g., '_processed')",
     )
 
@@ -940,18 +941,18 @@ async def main_async() -> None:
                 output_dir.mkdir(parents=True, exist_ok=True)
             else:
                 output_dir = transcript_path.parent
-            
+
             # Generate filename with optional extension suffix
             base_name = transcript_path.stem
             file_ext = transcript_path.suffix
-            
+
             if args.extension:
                 output_filename = f"{base_name}{args.extension}{file_ext}"
             else:
                 output_filename = f"{base_name}{file_ext}"
-                
+
             output_path = output_dir / output_filename
-            
+
             with open(output_path, "w", encoding="utf-8") as f:
                 f.write(reformatted_text)
             logging.info(f"Output written to {output_path}")

@@ -173,7 +173,12 @@ def create_test_audio_files(
     return test_files
 
 
-def run_transcription(audio_path: Path, complex_json: bool = False, out_dir: Optional[Path] = None, use_temp_dir: bool = True) -> Tuple[str, Dict]:
+def run_transcription(
+    audio_path: Path,
+    complex_json: bool = False,
+    out_dir: Optional[Path] = None,
+    use_temp_dir: bool = True,
+) -> Tuple[str, Dict]:
     """
     Run transcription on an audio file and return the results.
 
@@ -186,14 +191,17 @@ def run_transcription(audio_path: Path, complex_json: bool = False, out_dir: Opt
     Returns:
         Tuple of (plain_text, json_data)
     """
-    logging.info(f"Transcribing: {audio_path} (complex_json={complex_json}, out_dir={out_dir})")
+    logging.info(
+        f"Transcribing: {audio_path} (complex_json={complex_json}, out_dir={out_dir})"
+    )
 
     # Use temporary directory if no specific out_dir provided and use_temp_dir is True
     temp_dir = None
     actual_out_dir = out_dir
-    
+
     if use_temp_dir and not out_dir:
         import tempfile
+
         temp_dir = tempfile.mkdtemp()
         actual_out_dir = Path(temp_dir)
 
@@ -231,17 +239,20 @@ def run_transcription(audio_path: Path, complex_json: bool = False, out_dir: Opt
         json_data = {}
         if complex_json:
             if not json_path.exists():
-                raise FileNotFoundError(f"Expected JSON output file not found: {json_path}")
+                raise FileNotFoundError(
+                    f"Expected JSON output file not found: {json_path}"
+                )
 
             with open(json_path, "r", encoding="utf-8") as f:
                 json_data = json.load(f)
 
         return plain_text, json_data
-    
+
     finally:
         # Clean up temporary directory if created
         if temp_dir:
             import shutil
+
             shutil.rmtree(temp_dir, ignore_errors=True)
 
 
@@ -375,29 +386,31 @@ def validate_transcription_output(
 def cleanup_generated_files() -> None:
     """
     Clean up generated .txt and .json files from the test_audio directory.
-    
+
     This function removes transcription output files that may have been created
     during testing to keep the test directory clean.
     """
     test_dir = Path("test_audio")
     if not test_dir.exists():
         return
-    
+
     # Remove .txt and .json files from test_audio directory
     files_to_remove = []
     files_to_remove.extend(test_dir.glob("*.txt"))
     files_to_remove.extend(test_dir.glob("*.json"))
-    
+
     for file_path in files_to_remove:
         try:
             file_path.unlink()
             logging.debug(f"Removed: {file_path}")
         except OSError as e:
             logging.warning(f"Failed to remove {file_path}: {e}")
-    
+
     removed_count = len(files_to_remove)
     if removed_count > 0:
-        logging.info(f"Cleaned up {removed_count} generated files from test_audio directory")
+        logging.info(
+            f"Cleaned up {removed_count} generated files from test_audio directory"
+        )
 
 
 def test_transcription_accuracy(force_regenerate: bool = False) -> None:
@@ -510,7 +523,7 @@ def test_transcription_accuracy(force_regenerate: bool = False) -> None:
     logging.info(
         "Test audio files are preserved in the test_audio/ directory for future runs."
     )
-    
+
     # Clean up generated files after testing
     logging.info("Cleaning up generated test files...")
     cleanup_generated_files()

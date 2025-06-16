@@ -12,8 +12,7 @@ from pathlib import Path
 
 # Import the filtering function from the main script
 sys.path.append(".")
-from batch_process_transcripts import (find_transcript_files,
-                                       get_output_filenames)
+from batch_process_transcripts import find_transcript_files, get_output_filenames
 
 
 def preview_processing(source_dir: str, output_dir: str):
@@ -79,9 +78,7 @@ def preview_processing(source_dir: str, output_dir: str):
 if __name__ == "__main__":
     if len(sys.argv) != 3:
         print("Usage: python preview_batch_processing.py SOURCE_DIR OUTPUT_DIR")
-        print(
-            'Example: python preview_batch_processing.py "mp3/" "tmp/"'
-        )
+        print('Example: python preview_batch_processing.py "mp3/" "tmp/"')
         sys.exit(1)
 
     preview_processing(sys.argv[1], sys.argv[2])
