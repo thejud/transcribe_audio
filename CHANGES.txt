@@ -1,5 +1,13 @@
 # CHANGES.txt - Transcribe Voicemails Project
 
+## Version 2.1.1 - 2025-06-16
+
+### Standardization
+- Standardized output directory options across all scripts to use `-O, --output-dir`
+- Updated `post_process.py` to use `--output-dir` instead of `--out-dir`
+- Updated `transcribe.py` to use `--output-dir` instead of `--out-dir`
+- Updated all documentation examples and help text to reflect new standardized option names
+
 ## Version 2.1.0 - 2025-06-15
 
 ### New Features

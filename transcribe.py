@@ -482,7 +482,7 @@ def transcribe_audio_file(
     output_txt: bool = False,
     output_json: bool = False,
     complex_json: bool = False,
-    out_dir: Optional[Path] = None,
+    output_dir: Optional[Path] = None,
     prompt: Optional[str] = None,
 ) -> None:
     """
@@ -500,7 +500,7 @@ def transcribe_audio_file(
         output_txt: Print text output to stdout instead of writing files
         output_json: Print JSON output to stdout instead of writing files
         complex_json: Write JSON file with timestamps and segments (in addition to txt)
-        out_dir: Optional output directory for result files (default: same as input)
+        output_dir: Optional output directory for result files (default: same as input)
         prompt: Context or guidance for transcription accuracy
 
     Note:
@@ -553,12 +553,12 @@ def transcribe_audio_file(
         else:
             # Save results to files
             base_name = audio_path.stem
-            output_dir = out_dir if out_dir else audio_path.parent
+            output_directory = output_dir if output_dir else audio_path.parent
             # Ensure output directory exists
-            output_dir.mkdir(parents=True, exist_ok=True)
+            output_directory.mkdir(parents=True, exist_ok=True)
 
-            txt_path = output_dir / f"{base_name}.txt"
-            json_path = output_dir / f"{base_name}.json" if complex_json else None
+            txt_path = output_directory / f"{base_name}.txt"
+            json_path = output_directory / f"{base_name}.json" if complex_json else None
 
             # Check if files already exist and force flag is not set
             existing_files = []
@@ -679,8 +679,8 @@ Examples:
 
     # Output directory option
     parser.add_argument(
-        "-o",
-        "--out-dir",
+        "-O",
+        "--output-dir",
         type=str,
         help="Output directory for result files (default: same directory as input audio)",
     )
@@ -749,8 +749,8 @@ def main() -> None:
     # Process each audio file
     for audio_file_path in args.audio_files:
         audio_path = Path(audio_file_path)
-        # Convert out_dir to Path if provided
-        out_dir = Path(args.out_dir) if args.out_dir else None
+        # Convert output_dir to Path if provided
+        out_dir = Path(args.output_dir) if args.output_dir else None
 
         transcribe_audio_file(
             audio_path,

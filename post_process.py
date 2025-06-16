@@ -30,7 +30,7 @@ Usage:
     python post_process.py transcript.txt --4o
 
     # Save to specific output directory
-    python post_process.py transcript.txt --out-dir processed/
+    python post_process.py transcript.txt --output-dir processed/
 
     # Add suffix to output filename
     python post_process.py transcript.txt --extension "_formatted"
@@ -673,7 +673,7 @@ Examples:
   %(prog)s transcript.txt --max-concurrent 5       # Process 5 chunks simultaneously
   %(prog)s transcript.txt --no-cache               # Disable caching
   %(prog)s transcript.txt --verify -o output.txt   # Verify and save to file on success
-  %(prog)s transcript.txt --out-dir processed/     # Save to specific directory
+  %(prog)s transcript.txt --output-dir processed/     # Save to specific directory
   %(prog)s transcript.txt --extension "_clean"     # Add suffix to filename
   %(prog)s transcript.txt --inplace --verify       # Overwrite input file (with verification)
   %(prog)s transcript.txt --verify --verify-mode strict  # Use strict verification
@@ -795,7 +795,8 @@ Examples:
         help="Output file path (only written on successful verification)",
     )
     output_group.add_argument(
-        "--out-dir",
+        "-O",
+        "--output-dir",
         help="Output directory for result files (default: same directory as input)",
     )
     output_group.add_argument(
@@ -932,12 +933,12 @@ async def main_async() -> None:
         except Exception as e:
             logging.error(f"Failed to overwrite input file {transcript_path}: {str(e)}")
             raise
-    elif args.out_dir or args.extension:
+    elif args.output_dir or args.extension:
         # Generate output file with directory and/or extension
         try:
             # Determine output directory
-            if args.out_dir:
-                output_dir = Path(args.out_dir)
+            if args.output_dir:
+                output_dir = Path(args.output_dir)
                 output_dir.mkdir(parents=True, exist_ok=True)
             else:
                 output_dir = transcript_path.parent
