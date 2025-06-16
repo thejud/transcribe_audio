@@ -660,25 +660,18 @@ def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(
         description="Reformat transcript text into natural paragraphs using OpenAI",
         epilog="""
-Examples:
-  %(prog)s transcript.txt                          # Basic usage with gpt-4.1-nano (default)
-  %(prog)s memo.txt --memo                         # Voice memo summarization mode
+Simple Examples:
+  %(prog)s transcript.txt                          # Basic transcript formatting
+  %(prog)s memo.txt --memo                         # Voice memo summarization (recommended)
   %(prog)s transcript.txt --prompt "Custom prompt" # Use custom prompt
-  %(prog)s transcript.txt --4o                     # Use gpt-4o model with chunking
-  %(prog)s transcript.txt --nano                   # Use gpt-4.1-nano model (fastest)
-  %(prog)s transcript.txt --4.1-mini               # Use gpt-4.1-mini model
-  %(prog)s transcript.txt --4.1                    # Use gpt-4.1 model
-  %(prog)s transcript.txt --no-chunking            # Use legacy single-chunk processing
-  %(prog)s transcript.txt --chunk-size 5000        # Use larger chunks
-  %(prog)s transcript.txt --max-concurrent 5       # Process 5 chunks simultaneously
-  %(prog)s transcript.txt --no-cache               # Disable caching
-  %(prog)s transcript.txt --verify -o output.txt   # Verify and save to file on success
-  %(prog)s transcript.txt --output-dir processed/     # Save to specific directory
-  %(prog)s transcript.txt --extension "_clean"     # Add suffix to filename
-  %(prog)s transcript.txt --inplace --verify       # Overwrite input file (with verification)
-  %(prog)s transcript.txt --verify --verify-mode strict  # Use strict verification
-  %(prog)s transcript.txt --test-mode --test-limit 1000  # Test with 1000 chars max
-  %(prog)s transcript.txt --debug                  # Enable debug logging
+  %(prog)s transcript.txt -O processed/            # Save to specific directory
+  %(prog)s transcript.txt --inplace               # Overwrite input file
+
+For streamlined voice memo processing, consider using: python pipeline.py audio/*.mp3
+
+Advanced Examples (use --advanced for full options):
+  %(prog)s transcript.txt --advanced --4o --verify --chunk-size 5000
+  %(prog)s transcript.txt --advanced --no-chunking --verify-mode strict
         """,
         formatter_class=argparse.RawDescriptionHelpFormatter,
     )
@@ -688,93 +681,8 @@ Examples:
         "transcript_file", help="Path to the transcript file to reformat"
     )
 
-    # Optional arguments
+    # Core options (always visible)
     parser.add_argument("--debug", action="store_true", help="Enable debug logging")
-
-    # Model selection options (mutually exclusive)
-    model_group = parser.add_mutually_exclusive_group()
-    model_group.add_argument(
-        "--model",
-        default="gpt-4.1-nano",
-        choices=["gpt-4o", "gpt-4o-mini", "gpt-4.1-nano", "gpt-4.1-mini", "gpt-4.1"],
-        help="OpenAI chat model to use (default: gpt-4.1-nano)",
-    )
-    model_group.add_argument(
-        "--4o",
-        action="store_const",
-        const="gpt-4o",
-        dest="model",
-        help="Use gpt-4o model",
-    )
-    model_group.add_argument(
-        "--mini",
-        action="store_const",
-        const="gpt-4o-mini",
-        dest="model",
-        help="Use gpt-4o-mini model",
-    )
-    model_group.add_argument(
-        "--nano",
-        action="store_const",
-        const="gpt-4.1-nano",
-        dest="model",
-        help="Use gpt-4.1-nano model (fastest, most cost-effective)",
-    )
-    model_group.add_argument(
-        "--4.1-mini",
-        action="store_const",
-        const="gpt-4.1-mini",
-        dest="model",
-        help="Use gpt-4.1-mini model",
-    )
-    model_group.add_argument(
-        "--4.1",
-        action="store_const",
-        const="gpt-4.1",
-        dest="model",
-        help="Use gpt-4.1 model",
-    )
-
-    # Chunking options
-    parser.add_argument(
-        "--no-chunking",
-        action="store_true",
-        help="Disable chunking and process entire transcript at once (legacy mode)",
-    )
-    parser.add_argument(
-        "--chunk-size",
-        type=int,
-        default=4000,
-        help="Maximum tokens per chunk (default: 4000)",
-    )
-    parser.add_argument(
-        "--overlap",
-        type=int,
-        default=300,
-        help="Overlap tokens between chunks (default: 300)",
-    )
-    parser.add_argument(
-        "--max-concurrent",
-        type=int,
-        default=3,
-        help="Maximum concurrent API requests (default: 3)",
-    )
-    parser.add_argument(
-        "--no-cache", action="store_true", help="Disable caching of processed chunks"
-    )
-
-    # Verification options
-    parser.add_argument(
-        "--verify",
-        action="store_true",
-        help="Verify text integrity before outputting results",
-    )
-    parser.add_argument(
-        "--verify-mode",
-        choices=["strict", "normalized", "word-only"],
-        default="normalized",
-        help="Verification mode (default: normalized)",
-    )
 
     # Processing mode and prompt options
     parser.add_argument(
@@ -792,7 +700,7 @@ Examples:
     output_group.add_argument(
         "-o",
         "--output",
-        help="Output file path (only written on successful verification)",
+        help="Output file path",
     )
     output_group.add_argument(
         "-O",
@@ -802,7 +710,7 @@ Examples:
     output_group.add_argument(
         "--inplace",
         action="store_true",
-        help="Overwrite the input file with processed result (only on successful processing)",
+        help="Overwrite the input file with processed result",
     )
 
     # Extension option
@@ -812,20 +720,140 @@ Examples:
         help="Suffix to add to output filename before the file extension (e.g., '_processed')",
     )
 
-    # Test mode options
+    # Advanced mode toggle
     parser.add_argument(
-        "--test-mode",
+        "--advanced",
         action="store_true",
-        help="Enable test mode with smaller chunks and limited input",
-    )
-    parser.add_argument(
-        "--test-limit",
-        type=int,
-        default=2000,
-        help="Maximum characters to process in test mode (default: 2000)",
+        help="Enable advanced options (models, chunking, verification, testing)",
     )
 
-    return parser.parse_args()
+    # Advanced options (only shown with --advanced)
+    if "--advanced" in sys.argv or "-h" in sys.argv or "--help" in sys.argv:
+        # Model selection options (advanced)
+        model_group = parser.add_mutually_exclusive_group()
+        model_group.add_argument(
+            "--model",
+            default="gpt-4.1-nano",
+            choices=[
+                "gpt-4o",
+                "gpt-4o-mini",
+                "gpt-4.1-nano",
+                "gpt-4.1-mini",
+                "gpt-4.1",
+            ],
+            help="OpenAI chat model to use (default: gpt-4.1-nano)",
+        )
+        model_group.add_argument(
+            "--4o",
+            action="store_const",
+            const="gpt-4o",
+            dest="model",
+            help="Use gpt-4o model",
+        )
+        model_group.add_argument(
+            "--mini",
+            action="store_const",
+            const="gpt-4o-mini",
+            dest="model",
+            help="Use gpt-4o-mini model",
+        )
+        model_group.add_argument(
+            "--nano",
+            action="store_const",
+            const="gpt-4.1-nano",
+            dest="model",
+            help="Use gpt-4.1-nano model (fastest, most cost-effective)",
+        )
+        model_group.add_argument(
+            "--4.1-mini",
+            action="store_const",
+            const="gpt-4.1-mini",
+            dest="model",
+            help="Use gpt-4.1-mini model",
+        )
+        model_group.add_argument(
+            "--4.1",
+            action="store_const",
+            const="gpt-4.1",
+            dest="model",
+            help="Use gpt-4.1 model",
+        )
+
+        # Chunking options (advanced)
+        parser.add_argument(
+            "--no-chunking",
+            action="store_true",
+            help="Disable chunking and process entire transcript at once (legacy mode)",
+        )
+        parser.add_argument(
+            "--chunk-size",
+            type=int,
+            default=4000,
+            help="Maximum tokens per chunk (default: 4000)",
+        )
+        parser.add_argument(
+            "--overlap",
+            type=int,
+            default=300,
+            help="Overlap tokens between chunks (default: 300)",
+        )
+        parser.add_argument(
+            "--max-concurrent",
+            type=int,
+            default=3,
+            help="Maximum concurrent API requests (default: 3)",
+        )
+        parser.add_argument(
+            "--no-cache",
+            action="store_true",
+            help="Disable caching of processed chunks",
+        )
+
+        # Verification options (advanced)
+        parser.add_argument(
+            "--verify",
+            action="store_true",
+            help="Verify text integrity before outputting results",
+        )
+        parser.add_argument(
+            "--verify-mode",
+            choices=["strict", "normalized", "word-only"],
+            default="normalized",
+            help="Verification mode (default: normalized)",
+        )
+
+        # Test mode options (advanced)
+        parser.add_argument(
+            "--test-mode",
+            action="store_true",
+            help="Enable test mode with smaller chunks and limited input",
+        )
+        parser.add_argument(
+            "--test-limit",
+            type=int,
+            default=2000,
+            help="Maximum characters to process in test mode (default: 2000)",
+        )
+
+    # Parse arguments
+    args = parser.parse_args()
+
+    # Set default values for advanced options if not in advanced mode
+    if not args.advanced:
+        args.model = "gpt-4.1-nano"
+        args.no_chunking = False
+        args.chunk_size = 4000
+        args.overlap = 300
+        args.max_concurrent = 3
+        args.no_cache = False
+        args.verify = False
+        args.verify_mode = "normalized"
+        args.test_mode = False
+        args.test_limit = 2000
+    elif not hasattr(args, "model") or args.model is None:
+        args.model = "gpt-4.1-nano"
+
+    return args
 
 
 async def main_async() -> None:

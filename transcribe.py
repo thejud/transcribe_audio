@@ -610,12 +610,17 @@ def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(
         description="Transcribe audio files using OpenAI transcription API",
         epilog="""
-Examples:
-  %(prog)s audio/voicemail.mp3                    # Basic transcription (txt only)
-  %(prog)s audio/voicemail.mp3 --complex-json     # Include JSON with timestamps
-  %(prog)s audio/*.mp3 --txt                      # Batch to stdout
-  %(prog)s audio/file.mp3 --mini                  # Use cheaper model
-  %(prog)s audio/file.mp3 --prompt "Names: Jud"   # Custom context
+Simple Examples:
+  %(prog)s audio/voicemail.mp3                    # Basic transcription with cost-effective model
+  %(prog)s audio/*.mp3 --mini                     # Process multiple files (cheapest model)
+  %(prog)s audio/file.mp3 --prompt "Names: Jud"   # Custom context for better accuracy
+  %(prog)s audio/*.mp3 -O transcripts/            # Save to specific directory
+
+For voice memo pipeline, consider using: python pipeline.py audio/*.mp3
+
+Advanced Examples (use --advanced for full options):
+  %(prog)s audio/file.mp3 --advanced --model whisper-1 --complex-json
+  %(prog)s audio/*.mp3 --advanced --txt           # Stdout output
         """,
         formatter_class=argparse.RawDescriptionHelpFormatter,
     )
@@ -625,7 +630,7 @@ Examples:
         "audio_files", nargs="+", help="Path(s) to audio file(s) to transcribe"
     )
 
-    # Optional arguments
+    # Core options (always visible)
     parser.add_argument("--debug", action="store_true", help="Enable debug logging")
     parser.add_argument(
         "-f",
@@ -634,47 +639,21 @@ Examples:
         help="Force overwrite existing output files",
     )
 
-    # Model selection options (mutually exclusive)
+    # Simple model selection
     model_group = parser.add_mutually_exclusive_group()
     model_group.add_argument(
-        "--model",
-        default="gpt-4o-transcribe",
-        choices=["whisper-1", "gpt-4o-transcribe", "gpt-4o-mini-transcribe"],
-        help="OpenAI transcription model to use (default: gpt-4o-transcribe)",
+        "--mini",
+        action="store_const",
+        const="gpt-4o-mini-transcribe",
+        dest="model",
+        help="Use cost-effective model (gpt-4o-mini-transcribe)",
     )
     model_group.add_argument(
         "--4o",
         action="store_const",
         const="gpt-4o-transcribe",
         dest="model",
-        help="Use gpt-4o-transcribe model",
-    )
-    model_group.add_argument(
-        "--mini",
-        action="store_const",
-        const="gpt-4o-mini-transcribe",
-        dest="model",
-        help="Use gpt-4o-mini-transcribe model",
-    )
-
-    # Output format options (mutually exclusive)
-    output_group = parser.add_mutually_exclusive_group()
-    output_group.add_argument(
-        "--txt",
-        action="store_true",
-        help="Print text output to stdout instead of writing files",
-    )
-    output_group.add_argument(
-        "--json",
-        action="store_true",
-        help="Print JSON output to stdout instead of writing files (whisper-1 only)",
-    )
-
-    # Complex JSON output option (not mutually exclusive with output formats)
-    parser.add_argument(
-        "--complex-json",
-        action="store_true",
-        help="Write JSON file with timestamps and segments (in addition to txt file)",
+        help="Use balanced model (gpt-4o-transcribe)",
     )
 
     # Output directory option
@@ -693,10 +672,58 @@ Examples:
         "(e.g., names, terminology). If not provided, uses DEFAULT_PROMPT from .env file",
     )
 
+    # Advanced mode toggle
+    parser.add_argument(
+        "--advanced",
+        action="store_true",
+        help="Enable advanced options (model selection, output formats, JSON)",
+    )
+
+    # Advanced options (only shown with --advanced)
+    if "--advanced" in sys.argv or "-h" in sys.argv or "--help" in sys.argv:
+        # Model selection options (advanced)
+        model_group.add_argument(
+            "--model",
+            default="gpt-4o-mini-transcribe",
+            choices=["whisper-1", "gpt-4o-transcribe", "gpt-4o-mini-transcribe"],
+            help="OpenAI transcription model to use (default: gpt-4o-mini-transcribe)",
+        )
+
+        # Output format options (advanced)
+        output_group = parser.add_mutually_exclusive_group()
+        output_group.add_argument(
+            "--txt",
+            action="store_true",
+            help="Print text output to stdout instead of writing files",
+        )
+        output_group.add_argument(
+            "--json",
+            action="store_true",
+            help="Print JSON output to stdout instead of writing files (whisper-1 only)",
+        )
+
+        # Complex JSON output option (advanced)
+        parser.add_argument(
+            "--complex-json",
+            action="store_true",
+            help="Write JSON file with timestamps and segments (in addition to txt file)",
+        )
+
+    # Parse arguments
     args = parser.parse_args()
 
-    # Validate JSON output option with model compatibility
-    if args.json and args.model.startswith("gpt-4o"):
+    # Set default model if not specified
+    if not hasattr(args, "model") or args.model is None:
+        args.model = "gpt-4o-mini-transcribe"
+
+    # Set default values for advanced options if not in advanced mode
+    if not args.advanced:
+        args.txt = False
+        args.json = False
+        args.complex_json = False
+
+    # Validate JSON output option with model compatibility (advanced mode only)
+    if hasattr(args, "json") and args.json and args.model.startswith("gpt-4o"):
         logging.error(
             f"JSON output with detailed segments is not available for model '{args.model}'."
         )

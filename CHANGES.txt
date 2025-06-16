@@ -1,8 +1,38 @@
 # CHANGES.txt - Transcribe Voicemails Project
 
-## Version 2.1.1 - 2025-06-16
+## Version 2.2.0 - 2025-06-16
 
-### Standardization
+### Simplification & Pipeline Tool
+
+#### New Streamlined Pipeline Tool
+- **Added `pipeline.py`**: One-command tool for voice memo processing (audio → cleaned text)
+- Automatic transcription with cost-effective models (gpt-4o-mini-transcribe)
+- Built-in voice memo summarization with gpt-4.1-nano
+- Date-organized output structure (`processed/YYYY-MM-DD/`)
+- Preserves original filenames (audio.mp3 → audio.txt)
+- Automatic cleanup of intermediate transcription files
+- Quality presets: fast (default), balanced, high
+
+#### Interface Simplification
+- **Simplified `transcribe.py`**: Reduced from 10+ options to 6 core options
+- **Simplified `post_process.py`**: Streamlined interface with essential options visible
+- **Advanced mode**: Use `--advanced` flag to access full feature set
+- **Better defaults**: Cost-effective models by default (gpt-4o-mini, gpt-4.1-nano)
+- Clear guidance pointing users to appropriate tools for their use case
+
+#### Documentation Overhaul
+- **Quick Start section**: Three usage tiers prominently displayed
+- **Pipeline examples**: Voice memo workflow featured first
+- **Reorganized examples**: Simple → Standard → Advanced progression
+- **Reduced complexity**: Moved advanced examples to dedicated section
+- Clear tool selection guidance (pipeline vs individual tools)
+
+#### Three Usage Tiers Established
+1. **Simple Pipeline**: `pipeline.py` for voice memos (one command, optimized defaults)
+2. **Standard Tools**: Simplified `transcribe.py` and `post_process.py` interfaces
+3. **Advanced**: Full feature access via `--advanced` flag
+
+### Standardization (from 2.1.1)
 - Standardized output directory options across all scripts to use `-O, --output-dir`
 - Updated `post_process.py` to use `--output-dir` instead of `--out-dir`
 - Updated `transcribe.py` to use `--output-dir` instead of `--out-dir`

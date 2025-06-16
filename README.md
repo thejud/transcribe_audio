@@ -2,6 +2,46 @@
 
 A simple Python tool for transcribing audio files (MP3, M4A, WAV, FLAC, etc.) using OpenAI's transcription models with intelligent chunking, context-aware prompts, and multiple output formats.
 
+## Quick Start
+
+### Simple Voice Memo Pipeline (Recommended)
+
+For most voice memo use cases, use the streamlined pipeline that handles transcription and post-processing in one command:
+
+```bash
+# Process voice memos (automatically transcribes and summarizes)
+python pipeline.py voicemail.mp3
+python pipeline.py *.mp3 *.m4a
+
+# Specify output directory
+python pipeline.py audio/*.mp3 -O processed/
+
+# Higher quality processing
+python pipeline.py meeting.mp3 --quality high
+```
+
+### Individual Tools (For Advanced Use)
+
+For more control or general audio transcription:
+
+```bash
+# Just transcription (cost-effective)
+python transcribe.py audio/*.mp3 --mini
+
+# Just post-processing 
+python post_process.py transcript.txt --memo
+
+# Full control with advanced options
+python transcribe.py audio.mp3 --advanced --model whisper-1 --complex-json
+python post_process.py transcript.txt --advanced --verify --4o
+```
+
+### Three Usage Levels
+
+1. **Simple Pipeline**: `pipeline.py` - Voice memos → final text in one step
+2. **Standard Tools**: `transcribe.py` and `post_process.py` - Simplified interfaces with sensible defaults  
+3. **Advanced**: Add `--advanced` flag for full feature access
+
 ## Motivation
 
 I created this tool to solve a particular problem I had: I had accumulated a
@@ -83,86 +123,42 @@ The openAI APIs are very cost effective, and I wanted to avoid yet another month
    DEFAULT_PROMPT=Names: Jud (not Judge), [other family names]. Places: [your locations]. Context: family voicemails, appointments, scheduling.
    ```
 
-## Usage
+## Standard Usage
 
-### Basic Transcription
-
-```bash
-# Transcribe a single file (creates .txt file only by default)
-uv run python transcribe.py audio/voicemail.mp3
-
-# Transcribe with JSON output containing timestamps and segments
-uv run python transcribe.py audio/voicemail.mp3 --complex-json
-
-# Transcribe multiple files (supports MP3, M4A, WAV, etc.)
-uv run python transcribe.py audio/*.mp3 audio/*.m4a
-```
-
-### Model Selection
+### Simple Transcription (Individual Tools)
 
 ```bash
-# Use GPT-4o-mini (most cost-effective)
-uv run python transcribe.py audio/file.m4a --mini
+# Basic transcription with cost-effective model
+python transcribe.py audio/voicemail.mp3 --mini
 
-# Use Whisper-1 (detailed segments)
-uv run python transcribe.py audio/file.wav --model whisper-1
+# Multiple files  
+python transcribe.py audio/*.mp3 --mini
 
-# Use GPT-4o-transcribe (default, good accuracy)
-uv run python transcribe.py audio/file.mp3 --4o
-```
-
-### Output Options
-
-```bash
-# Output text to stdout
-uv run python transcribe.py audio/file.mp3 --txt
-
-# Output JSON to stdout (Whisper-1 only)
-uv run python transcribe.py audio/file.mp3 --model whisper-1 --json
-
-# Save both text and JSON files (with timestamps and segments)
-uv run python transcribe.py audio/file.mp3 --complex-json
-
-# Save output to specific directory
-uv run python transcribe.py audio/file.mp3 --out-dir transcriptions/
-
-# Force overwrite existing files
-uv run python transcribe.py audio/file.mp3 --force
-```
-
-### Custom Context
-
-```bash
-# Use custom prompt for better accuracy
-uv run python transcribe.py audio/file.mp3 --prompt "Names: Jud (not Judge). Technical terms: API, SDK"
-
-# Default prompt from .env is used automatically if no --prompt specified
-uv run python transcribe.py audio/file.mp3
-```
-
-## Post-Processing
-
-The repository includes a post-processing tool (`post_process.py`) to clean up and format transcripts:
-
-```bash
-# Basic transcript formatting
-uv run python post_process.py transcript.txt
-
-# Voice memo summarization
-uv run python post_process.py memo.txt --memo
+# Custom context for better accuracy
+python transcribe.py audio/file.mp3 --prompt "Names: Jud (not Judge)"
 
 # Save to specific directory
-uv run python post_process.py transcript.txt --out-dir processed/
-
-# Add suffix to output filename
-uv run python post_process.py transcript.txt --extension "_cleaned"
-
-# Process in-place (overwrite original file)
-uv run python post_process.py transcript.txt --inplace
-
-# Combine with verification for safety
-uv run python post_process.py transcript.txt --inplace --verify
+python transcribe.py audio/*.mp3 -O transcriptions/
 ```
+
+### Basic Post-Processing
+
+```bash
+# Voice memo summarization (recommended)
+python post_process.py transcript.txt --memo
+
+# Basic transcript formatting
+python post_process.py transcript.txt
+
+# Save to specific directory
+python post_process.py transcript.txt -O processed/
+
+# Process in-place (overwrites original)
+python post_process.py transcript.txt --inplace
+```
+
+> **💡 Tip**: For voice memos, consider using `python pipeline.py audio/*.mp3` which handles both steps automatically with optimized settings.
+
 
 ## Audio Conversion
 
@@ -234,6 +230,51 @@ With `--complex-json` flag, creates two files:
 
 - `--txt`: Outputs plain text to stdout (logs go to stderr)
 - `--json`: Outputs JSON to stdout (Whisper-1 only, logs go to stderr)
+
+## Advanced Usage
+
+For users who need more control or want to use this as a demonstration project, the individual tools provide extensive customization options when used with the `--advanced` flag.
+
+### Advanced Transcription Options
+
+```bash
+# Advanced model and output control
+python transcribe.py audio.mp3 --advanced --model whisper-1 --complex-json
+
+# Stdout output for pipeline integration
+python transcribe.py audio/*.mp3 --advanced --txt > all_transcriptions.txt
+
+# JSON output with detailed segments (Whisper-1 only)
+python transcribe.py audio.mp3 --advanced --model whisper-1 --json
+```
+
+### Advanced Post-Processing Options
+
+```bash
+# Advanced verification and chunking control
+python post_process.py transcript.txt --advanced --verify --chunk-size 5000
+
+# Custom models and processing options
+python post_process.py transcript.txt --advanced --4o --verify-mode strict
+
+# Testing and development
+python post_process.py transcript.txt --advanced --test-mode --test-limit 1000
+```
+
+### Pipeline Integration Examples
+
+```bash
+# Convert and process in one pipeline
+./convert_audio.sh *.amr && python pipeline.py audio/*.mp3
+
+# Custom processing pipeline with intermediate files
+python transcribe.py audio/*.mp3 --advanced --mini -O temp/
+python post_process.py temp/*.txt --advanced --memo --verify -O final/
+
+# Batch processing with quality control
+python transcribe.py audio/*.mp3 --advanced --model whisper-1 --complex-json
+python post_process.py *.txt --advanced --verify --verify-mode word-only
+```
 
 ## Audio Chunk Caching
 
