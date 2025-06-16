@@ -667,7 +667,7 @@ Simple Examples:
   %(prog)s transcript.txt -O processed/            # Save to specific directory
   %(prog)s transcript.txt --inplace               # Overwrite input file
 
-For streamlined voice memo processing, consider using: python pipeline.py audio/*.mp3
+For streamlined voice memo processing, consider using: python transcribe_pipeline.py audio/*.mp3
 
 Advanced Examples (use --advanced for full options):
   %(prog)s transcript.txt --advanced --4o --verify --chunk-size 5000

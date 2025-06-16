@@ -616,7 +616,7 @@ Simple Examples:
   %(prog)s audio/file.mp3 --prompt "Names: Jud"   # Custom context for better accuracy
   %(prog)s audio/*.mp3 -O transcripts/            # Save to specific directory
 
-For voice memo pipeline, consider using: python pipeline.py audio/*.mp3
+For voice memo pipeline, consider using: python transcribe_pipeline.py audio/*.mp3
 
 Advanced Examples (use --advanced for full options):
   %(prog)s audio/file.mp3 --advanced --model whisper-1 --complex-json

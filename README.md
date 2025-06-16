@@ -10,14 +10,14 @@ For most voice memo use cases, use the streamlined pipeline that handles transcr
 
 ```bash
 # Process voice memos (automatically transcribes and summarizes)
-python pipeline.py voicemail.mp3
-python pipeline.py *.mp3 *.m4a
+python transcribe_pipeline.py voicemail.mp3
+python transcribe_pipeline.py *.mp3 *.m4a
 
 # Specify output directory
-python pipeline.py audio/*.mp3 -O processed/
+python transcribe_pipeline.py audio/*.mp3 -O processed/
 
 # Higher quality processing
-python pipeline.py meeting.mp3 --quality high
+python transcribe_pipeline.py meeting.mp3 --quality high
 ```
 
 ### Individual Tools (For Advanced Use)
@@ -38,7 +38,7 @@ python post_process.py transcript.txt --advanced --verify --4o
 
 ### Three Usage Levels
 
-1. **Simple Pipeline**: `pipeline.py` - Voice memos → final text in one step
+1. **Simple Pipeline**: `transcribe_pipeline.py` - Voice memos → final text in one step
 2. **Standard Tools**: `transcribe.py` and `post_process.py` - Simplified interfaces with sensible defaults  
 3. **Advanced**: Add `--advanced` flag for full feature access
 
@@ -157,7 +157,7 @@ python post_process.py transcript.txt -O processed/
 python post_process.py transcript.txt --inplace
 ```
 
-> **💡 Tip**: For voice memos, consider using `python pipeline.py audio/*.mp3` which handles both steps automatically with optimized settings.
+> **💡 Tip**: For voice memos, consider using `python transcribe_pipeline.py audio/*.mp3` which handles both steps automatically with optimized settings.
 
 
 ## Audio Conversion
@@ -265,7 +265,7 @@ python post_process.py transcript.txt --advanced --test-mode --test-limit 1000
 
 ```bash
 # Convert and process in one pipeline
-./convert_audio.sh *.amr && python pipeline.py audio/*.mp3
+./convert_audio.sh *.amr && python transcribe_pipeline.py audio/*.mp3
 
 # Custom processing pipeline with intermediate files
 python transcribe.py audio/*.mp3 --advanced --mini -O temp/

@@ -90,15 +90,26 @@ def run_transcription(
     Returns:
         Path to transcribed text file, or None if failed
     """
+    # Get the directory where this script is located
+    script_dir = Path(__file__).parent
+    transcribe_script = script_dir / "transcribe.py"
+    
     cmd = [
         "python",
-        "transcribe.py",
+        str(transcribe_script),
         str(audio_file),
-        "--model",
-        model,
         "--output-dir",
         str(output_dir),
     ]
+
+    # Map model names to simplified interface flags
+    if model == "gpt-4o-mini-transcribe":
+        cmd.append("--mini")
+    elif model == "gpt-4o-transcribe":
+        cmd.append("--4o")
+    else:
+        # For whisper-1 or other models, use advanced mode
+        cmd.extend(["--advanced", "--model", model])
 
     if prompt:
         cmd.extend(["--prompt", prompt])
@@ -155,15 +166,29 @@ def run_post_processing(
     # Generate output filename
     output_file = output_dir / f"{transcript_file.stem}.txt"
 
+    # Get the directory where this script is located
+    script_dir = Path(__file__).parent
+    post_process_script = script_dir / "post_process.py"
+    
     cmd = [
         "python",
-        "post_process.py",
+        str(post_process_script),
         str(transcript_file),
-        "--model",
-        model,
         "-o",
         str(output_file),
     ]
+
+    # Map model names to simplified interface flags
+    if model == "gpt-4.1-nano":
+        # Default model, no flag needed
+        pass
+    elif model == "gpt-4o-mini":
+        cmd.extend(["--advanced", "--mini"])
+    elif model == "gpt-4o":
+        cmd.extend(["--advanced", "--4o"])
+    else:
+        # For other models, use advanced mode
+        cmd.extend(["--advanced", "--model", model])
 
     if mode == "memo":
         cmd.append("--memo")
