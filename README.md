@@ -42,6 +42,57 @@ python post_process.py transcript.txt --advanced --verify --4o
 2. **Standard Tools**: `transcribe.py` and `post_process.py` - Simplified interfaces with sensible defaults  
 3. **Advanced**: Add `--advanced` flag for full feature access
 
+## Voice Memo Watcher
+
+The `voice_memo_watcher.py` script provides automated processing of voice memos with smart file organization:
+
+```bash
+# Watch and process all voice memos in input directory
+python voice_memo_watcher.py
+
+# Use custom directories
+python voice_memo_watcher.py --audio-in ~/voice_inbox --audio-out ~/voice_processed --transcript-out ~/transcripts
+
+# Verbose logging
+python voice_memo_watcher.py --verbose
+```
+
+### Features
+
+- **Automated Processing**: Processes all audio files in the input directory through the transcription pipeline
+- **Smart Naming**: Extracts titles from `<title>` tags and creates meaningful filenames
+- **Obsidian-Ready**: Outputs markdown files (`.md`) with proper headers and space-friendly filenames
+- **M4A Metadata**: Extracts creation timestamps from M4A voice memo files
+- **File Organization**: Separates input, processed audio, and transcript files into different directories
+- **Path Logging**: Prints full file paths for easy access and opening
+
+### Configuration
+
+Add voice memo directories to your `.env` file:
+
+```env
+# Voice memo watcher directories
+AUDIO_IN=voice_memo_inbox
+AUDIO_OUT=voice_memo_outbox  
+TRANSCRIPT_OUT=voice_memo_transcripts
+```
+
+### Workflow
+
+1. **Drop voice memos** into the `AUDIO_IN` directory
+2. **Run the watcher** to process all files
+3. **Find organized output**:
+   - Original audio files → `AUDIO_OUT` (renamed with timestamps/titles)
+   - Transcripts → `TRANSCRIPT_OUT` (markdown files with `# Title` headers)
+
+### Output Example
+
+Input: `Recording001.m4a` → Output:
+- Audio: `20241215_143022_Meeting Notes for Project X.m4a`
+- Transcript: `20241215_143022_Meeting Notes for Project X.md`
+
+The transcript will contain a markdown header (`# Meeting Notes for Project X`) instead of XML tags, making it perfect for Obsidian and other markdown editors.
+
 ## Motivation
 
 I created this tool to solve a particular problem I had: I had accumulated a
@@ -201,6 +252,9 @@ The `.env` file supports the following variables:
 - **`OPENAI_API_KEY`** (required): Your OpenAI API key
 - **`SOURCE_AUDIO`** (optional): Default source directory for audio files
 - **`DEFAULT_PROMPT`** (optional): Default context prompt for improved transcription
+- **`AUDIO_IN`** (optional): Input directory for voice memo watcher
+- **`AUDIO_OUT`** (optional): Output directory for processed audio files
+- **`TRANSCRIPT_OUT`** (optional): Output directory for transcript markdown files
 
 ### Default Prompt
 

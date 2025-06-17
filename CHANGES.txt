@@ -1,5 +1,44 @@
 # CHANGES.txt - Transcribe Voicemails Project
 
+## Version 2.3.0 - 2025-06-17
+
+### Voice Memo Watcher Tool
+
+#### New voice_memo_watcher.py Script
+- **Automated voice memo processing**: Watches input directory and processes files through transcription pipeline
+- **Smart file naming**: Extracts titles from transcripts or uses timestamps for filenames
+- **M4A metadata support**: Extracts creation timestamps from M4A files using mutagen library
+- **Directory organization**: Separates input, output, and transcript directories
+- **Title extraction**: Parses `<title>` tags from transcripts for meaningful filenames
+- **Filename sanitization**: Converts titles to safe filenames with proper character handling
+- **Timestamp preservation**: Maintains original file creation times on output files
+- **Environment configuration**: Reads directory paths from .env file with sensible defaults
+
+#### Implementation Details
+- Added mutagen dependency for M4A metadata extraction
+- Processes audio files: mp3, m4a, wav, flac, ogg, opus
+- Integrates with existing transcribe_pipeline.py for transcription
+- Comprehensive error handling and logging
+- Command-line arguments for directory overrides and verbose mode
+
+#### Testing Infrastructure
+- **test_voice_memo_watcher.py**: Comprehensive test suite with unit and integration tests
+- **Safe file handling**: All tests use temporary directories and file copies
+- **No data loss risk**: Tests never touch production directories or original files
+- **Mock transcription**: Tests simulate transcription to avoid API calls
+- **test_safe_run.py**: Safe integration test script for manual verification
+
+#### .env Configuration
+- Added voice memo directory configuration:
+  - AUDIO_IN (default: voice_memo_inbox)
+  - AUDIO_OUT (default: voice_memo_outbox)
+  - TRANSCRIPT_OUT (default: voice_memo_transcripts)
+
+#### Documentation Updates
+- Updated spec/plan.md with comprehensive testing strategy section
+- Added test safety features and execution instructions
+- Documented environment variable handling for test isolation
+
 ## Version 2.2.0 - 2025-06-16
 
 ### Simplification & Pipeline Tool
