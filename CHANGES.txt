@@ -1,5 +1,71 @@
 # CHANGES.txt - Transcribe Voicemails Project
 
+## Version 2.4.0 - 2025-06-17
+
+### Context Extraction Improvement Plan
+
+#### Planning and Analysis
+- **Created spec/context_prompt_improvement.md**: Comprehensive plan for testing and improving context extraction
+- **Analyzed current implementation**: Examined existing MEMO_PROMPT in post_process.py
+- **Identified improvement areas**: Better pattern recognition for implicit context statements
+
+#### Test Infrastructure
+- **Created test/samples/ directory**: Organized location for context extraction test samples
+- **Added 5 test samples**: Each testing different context scenarios
+  - context_test_explicit.txt: Tests explicit "context" keyword
+  - context_test_implicit.txt: Tests implicit context statement  
+  - context_test_markers.txt: Tests begin/end context markers
+  - context_test_multiple.txt: Tests multiple context references
+  - context_test_no_context.txt: Tests handling of no context
+- **Realistic formatting**: All samples reflect unpunctuated voice memo transcriptions
+
+#### Test Script Implementation
+- **Created test_context_extraction.py**: Automated testing of context extraction
+- **Multiple prompt variations**: Tests 4 different prompt approaches
+  - Current: Existing implementation
+  - Enhanced: Better pattern recognition
+  - Flexible: Multiple context indicators
+  - Structured: Primary/secondary/fallback approach
+- **Comprehensive analysis**: Extracts and compares context and title tags
+- **Batch testing support**: Can test all variations with --all-variations flag
+
+#### Key Findings Documented
+- Current prompt relies heavily on explicit "context" keyword
+- Need for better implicit context detection
+- Importance of focusing on beginning of transcript
+- Challenge of unpunctuated input text
+
+#### Experimental Results
+- **Tested 6 prompt variations**: From current baseline to improved versions
+- **Best performer: Improved V4**: Achieved 80% accuracy (vs 60% baseline)
+- **Identified remaining challenge**: False positive context extraction when none exists
+- **Recommendation**: Improved V4 prompt shows significant enhancement potential
+
+### Voice Memo Watcher Watch Mode
+
+#### New --watch Feature
+- **Added continuous monitoring mode**: Use `--watch` or `-W` to run continuously
+- **Configurable check interval**: Use `--interval` or `-i` to set check frequency (default: 60 seconds)
+- **Graceful shutdown**: Responds to Ctrl+C and SIGTERM signals
+- **Comprehensive logging**: Debug and info level logging for monitoring
+- **Summary statistics**: Tracks total files processed across all iterations
+- **Responsive sleep**: Sleeps in 5-second increments for quick shutdown response
+
+#### Usage Examples
+```bash
+# Run once (original behavior)
+python voice_memo_watcher.py
+
+# Watch mode - check every 60 seconds
+python voice_memo_watcher.py --watch
+
+# Watch mode with custom interval
+python voice_memo_watcher.py --watch --interval 30
+
+# Watch mode with verbose logging
+python voice_memo_watcher.py --watch --verbose
+```
+
 ## Version 2.3.0 - 2025-06-17
 
 ### Voice Memo Watcher Tool

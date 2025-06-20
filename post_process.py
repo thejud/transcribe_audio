@@ -70,12 +70,14 @@ the paragraph structure.
 MEMO_PROMPT = """
 Clean up and summarize this voice memo transcript. The original is likely 
 rambling and stream-of-consciousness.
-0. Add a 3-8 word summary title as the first line. Enclose it in an XML <title>tag.
-1. Remove filler words, repetitions, and false starts
-2. Organize the thoughts into coherent paragraphs
-3. Preserve the main ideas and important details
-4. Make it more concise while keeping the essential meaning
-5. Use clear, natural language
+1. Add a 3-8 word summary title as the first line. Enclose it in an XML <title>tag.
+2. There may be a "context" hint near the beginning of the transcript that describes a context for the entry.
+   If present, extract this context and insert it inside an XML <context> tag.
+3. Remove filler words, repetitions, and false starts
+4. Organize the thoughts into coherent paragraphs
+5. Preserve the main ideas and important details
+6. Make it more concise while keeping the essential meaning
+7. Use clear, natural language
 The result should be a cleaned-up, more organized version of the original thoughts.
 """
 

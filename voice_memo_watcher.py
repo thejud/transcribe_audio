@@ -7,6 +7,8 @@ import argparse
 import subprocess
 import json
 import re
+import time
+import signal
 from pathlib import Path
 from datetime import datetime
 from typing import Optional, Dict, Any, List
@@ -37,6 +39,7 @@ class VoiceMemoWatcher:
         self.audio_out = audio_out
         self.transcript_out = transcript_out
         self.logger = logging.getLogger(__name__)
+        self.running = True
 
         # Create directories if they don't exist
         for dir_path in [audio_in, audio_out, transcript_out]:
@@ -261,6 +264,79 @@ class VoiceMemoWatcher:
 
         return {"processed": processed, "failed": failed, "total": len(files)}
 
+    def stop(self):
+        """Stop the watcher."""
+        self.running = False
+        self.logger.info("Stopping voice memo watcher...")
+
+    def run_watch_mode(self, interval: int = 60) -> None:
+        """Run in watch mode, checking for new files every interval seconds."""
+        self.logger.info(f"Starting watch mode - checking every {interval} seconds")
+        self.logger.info(f"Watching directory: {self.audio_in.absolute()}")
+        self.logger.info("Press Ctrl+C to stop")
+
+        # Set up signal handler for graceful shutdown
+        def signal_handler(signum, frame):
+            self.logger.info("Received interrupt signal")
+            self.stop()
+
+        signal.signal(signal.SIGINT, signal_handler)
+        signal.signal(signal.SIGTERM, signal_handler)
+
+        total_processed = 0
+        total_failed = 0
+        iterations = 0
+
+        try:
+            while self.running:
+                iterations += 1
+                self.logger.debug(
+                    f"Watch iteration {iterations} - checking for files..."
+                )
+
+                # Run one iteration
+                results = self.run()
+
+                # Update totals
+                total_processed += results["processed"]
+                total_failed += results["failed"]
+
+                # Log results if files were found
+                if results["total"] > 0:
+                    self.logger.info(
+                        f"Batch {iterations}: {results['processed']} processed, {results['failed']} failed"
+                    )
+                else:
+                    self.logger.debug(f"No files found in iteration {iterations}")
+
+                # Wait for next check (unless stopping)
+                if self.running:
+                    self.logger.debug(f"Waiting {interval} seconds until next check...")
+
+                    # Sleep in smaller increments to allow for responsive shutdown
+                    sleep_increment = min(5, interval)
+                    elapsed = 0
+                    while elapsed < interval and self.running:
+                        time.sleep(sleep_increment)
+                        elapsed += sleep_increment
+
+        except KeyboardInterrupt:
+            self.logger.info("Received keyboard interrupt")
+            self.stop()
+        except Exception as e:
+            self.logger.error(f"Unexpected error in watch mode: {e}")
+            self.stop()
+        finally:
+            # Print final summary
+            self.logger.info("Watch mode stopped")
+            print(f"\nFinal summary:")
+            print(f"  Total iterations: {iterations}")
+            print(f"  Total files processed: {total_processed}")
+            print(f"  Total failures: {total_failed}")
+
+            if total_failed > 0:
+                sys.exit(1)
+
 
 def main():
     parser = argparse.ArgumentParser(
@@ -283,6 +359,19 @@ def main():
     )
     parser.add_argument(
         "--verbose", "-v", action="store_true", help="Enable verbose logging"
+    )
+    parser.add_argument(
+        "--watch",
+        "-W",
+        action="store_true",
+        help="Run in watch mode (continuously monitor for new files)",
+    )
+    parser.add_argument(
+        "--interval",
+        "-i",
+        type=int,
+        default=60,
+        help="Check interval in seconds for watch mode (default: 60)",
     )
 
     args = parser.parse_args()
@@ -313,18 +402,24 @@ def main():
         )
     )
 
-    # Create watcher and run
+    # Create watcher
     watcher = VoiceMemoWatcher(audio_in, audio_out, transcript_out)
-    results = watcher.run()
 
-    # Print summary
-    print(f"\nProcessing complete:")
-    print(f"  Total files: {results['total']}")
-    print(f"  Processed: {results['processed']}")
-    print(f"  Failed: {results['failed']}")
+    if args.watch:
+        # Run in watch mode
+        watcher.run_watch_mode(args.interval)
+    else:
+        # Run once
+        results = watcher.run()
 
-    # Exit with error if any files failed
-    sys.exit(1 if results["failed"] > 0 else 0)
+        # Print summary
+        print(f"\nProcessing complete:")
+        print(f"  Total files: {results['total']}")
+        print(f"  Processed: {results['processed']}")
+        print(f"  Failed: {results['failed']}")
+
+        # Exit with error if any files failed
+        sys.exit(1 if results["failed"] > 0 else 0)
 
 
 if __name__ == "__main__":
