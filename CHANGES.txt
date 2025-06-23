@@ -1,5 +1,162 @@
 # CHANGES.txt - Transcribe Voicemails Project
 
+## Version 2.6.1 - 2025-01-23
+
+### Fixed USB Drive Directory Notification Issue
+- **Problem**: When USB drives were mounted, FSEvents only notified about directory creation, not existing files
+- **Solution**: Added directory event handling to AudioFileHandler
+  - `on_created` and `on_modified` now handle directory events
+  - Directory events trigger scanning for existing audio files
+  - Prevents missing files when USB drives are plugged in
+  - Added `find_audio_files_in_directory` method for single directory scanning
+  - Enhanced directory event handling to check parent/child directory relationships
+
+### Fixed USB Drive Mount Detection Issue
+- **Problem**: When USB directories became available, existing files weren't scanned
+- **Solution**: Enhanced monitor mode to scan for files when directories become available
+  - When a new directory is detected and starts being watched, it's immediately scanned
+  - Existing files are processed before waiting for new file events
+  - Prevents files from being missed when USB drives are mounted after monitoring starts
+
+### Fixed Poison File Empty Transcript Issue  
+- **Problem**: Some files generated empty transcripts but were still processed with empty content
+- **Solution**: Added transcript validation in process_file method
+  - Checks for empty or too-short transcripts (< 10 characters)
+  - Creates quarantine directory for problematic files
+  - Moves poison files to quarantine instead of output
+  - Cleans up empty transcript files automatically
+  - Better logging for troubleshooting transcript issues
+
+### Fixed Empty Transcript Stack Trace Issue
+- **Problem**: Pipeline failed with stack trace when transcription produced empty files
+- **Solution**: Added empty file validation in transcribe_pipeline.py
+  - Checks transcript content after successful transcription
+  - Returns None (failure) for empty transcripts instead of passing to post-processing
+  - Improved error messages to distinguish empty transcript errors
+  - Prevents post_process.py ValueError from propagating as stack trace
+
+### Testing Improvements
+- Added comprehensive test for directory event handling
+- Added test for empty transcript quarantine behavior
+- All tests passing with new functionality
+
+## Version 2.6.0 - 2025-06-20
+
+### FSEvents Real-Time Monitoring & macOS Integration
+
+#### Added FSEvents-based Real-Time Monitoring:
+
+1. **FSEvents Monitor Mode (`--monitor`)**:
+   - Real-time file detection using macOS FSEvents via `watchdog` library
+   - Zero CPU usage when no files are present (unlike polling)
+   - Immediate processing when audio files are added to input directories
+   - Automatic handling of USB device mounting/unmounting
+   - Intelligent duplicate processing prevention
+
+2. **Enhanced USB Device Support**:
+   - Automatically detects when USB directories become available
+   - Gracefully handles device disconnection/reconnection
+   - Processes existing files on startup, then monitors for new ones
+
+3. **macOS Launch Agent Integration**:
+   - Created Launch Agent plist templates for automatic startup
+   - Two modes: continuous FSEvents monitoring and periodic processing
+   - Better than cron: runs in user context with access to mounted volumes
+   - Automatic restart and logging integration
+
+4. **Command Line Enhancements**:
+   - Added `--monitor` / `-M` flag for FSEvents mode
+   - Mutually exclusive with `--watch` to prevent conflicting modes
+   - Graceful fallback to watch mode if watchdog library not available
+
+5. **Dependencies**:
+   - Added `watchdog>=3.0.0` for FSEvents monitoring
+   - Added `mutagen>=1.47.0` for audio metadata extraction
+
+### Key Benefits:
+- **Zero CPU usage** when idle (FSEvents vs polling)
+- **Immediate processing** - no waiting for polling intervals
+- **USB device awareness** - handles mounting/unmounting automatically
+- **macOS integration** - Launch Agents for background operation
+- **Backward compatibility** - existing functionality unchanged
+
+### Usage Examples:
+
+```bash
+# FSEvents real-time monitoring (recommended)
+python voice_memo_watcher.py --monitor
+
+# Periodic polling (original behavior)
+python voice_memo_watcher.py --watch --interval 60
+
+# Single run (process existing files and exit)
+python voice_memo_watcher.py
+
+# Launch Agent setup for automatic startup
+cp launch_agents/com.user.voicememo.monitor.plist ~/Library/LaunchAgents/
+launchctl load ~/Library/LaunchAgents/com.user.voicememo.monitor.plist
+```
+
+## Version 2.5.0 - 2025-06-20
+
+### Multiple Input Directory Support & Tool Consolidation
+
+#### Enhanced voice_memo_watcher.py:
+
+1. **Fixed Cross-Filesystem Issue**:
+   - Replaced `Path.rename()` with `shutil.move()` to handle moves from USB drives to local storage
+   - Eliminates "Invalid cross-device link" errors when moving files across filesystems
+
+2. **Added Multiple Input Directory Support**:
+   - Enhanced VoiceMemoWatcher class to accept multiple input directories
+   - Supports USB voice memo devices with A, B, C, D folders
+   - Maintains backward compatibility with single directory usage
+
+3. **Environment Variable Enhancement**:
+   - Added colon-separated path support in .env files
+   - Example: AUDIO_IN=/Volumes/VoiceBox/A:/Volumes/VoiceBox/B:/Volumes/VoiceBox/C:/Volumes/VoiceBox/D
+   - Backward compatible with single directory format
+
+4. **Command Line Interface**:
+   - Added support for multiple --audio-in arguments
+   - Example: --audio-in /path/A --audio-in /path/B --audio-in /path/C --audio-in /path/D
+
+5. **Updated Tests**:
+   - Added comprehensive test coverage for multiple input directories
+   - Tests for environment variable parsing (colon-separated and single)
+   - Tests for non-existent directories
+   - Tests for backward compatibility
+
+6. **Documentation Updates**:
+   - Created .env.example with multiple directory examples
+   - Updated README.md with USB voice memo device workflow
+   - Added configuration examples for colon-separated paths
+
+7. **Code Cleanup**:
+   - Removed redundant copy_audio_files.py tool (functionality integrated)
+   - Removed associated test file
+   - Formatted all code with black
+
+### Key Benefits:
+- Single tool handles complete workflow (copy + transcribe + organize)
+- Supports USB voice memo devices with multiple directories out of the box
+- Eliminates cross-filesystem move issues
+- Maintains all existing functionality and backward compatibility
+- Cleaner, more maintainable codebase
+
+### Usage Examples:
+
+```bash
+# Environment variable (colon-separated)
+AUDIO_IN=/Volumes/VoiceBox/A:/Volumes/VoiceBox/B:/Volumes/VoiceBox/C:/Volumes/VoiceBox/D
+
+# Command line (multiple arguments)
+python voice_memo_watcher.py --audio-in /Volumes/VoiceBox/A --audio-in /Volumes/VoiceBox/B --audio-in /Volumes/VoiceBox/C --audio-in /Volumes/VoiceBox/D
+
+# Single directory (backward compatible)
+python voice_memo_watcher.py --audio-in ~/voice_inbox
+```
+
 ## Version 2.4.0 - 2025-06-17
 
 ### Context Extraction Improvement Plan

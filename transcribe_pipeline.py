@@ -93,7 +93,7 @@ def run_transcription(
     # Get the directory where this script is located
     script_dir = Path(__file__).parent
     transcribe_script = script_dir / "transcribe.py"
-    
+
     cmd = [
         "python",
         str(transcribe_script),
@@ -124,6 +124,18 @@ def run_transcription(
             # Find the generated text file
             txt_file = output_dir / f"{audio_file.stem}.txt"
             if txt_file.exists():
+                # Check if the transcript is empty
+                try:
+                    content = txt_file.read_text(encoding="utf-8").strip()
+                    if not content:
+                        logging.error(
+                            f"Transcription produced empty file for {audio_file.name}"
+                        )
+                        return None
+                except Exception as e:
+                    logging.error(f"Error reading transcription file {txt_file}: {e}")
+                    return None
+
                 logging.debug(f"Transcription completed: {txt_file}")
                 return txt_file
             else:
@@ -169,7 +181,7 @@ def run_post_processing(
     # Get the directory where this script is located
     script_dir = Path(__file__).parent
     post_process_script = script_dir / "post_process.py"
-    
+
     cmd = [
         "python",
         str(post_process_script),
@@ -208,9 +220,15 @@ def run_post_processing(
                 logging.error(f"Expected processed file not found: {output_file}")
                 return None
         else:
-            logging.error(
-                f"Post-processing failed for {transcript_file.name}: {result.stderr}"
-            )
+            # Check if it's an empty transcript error
+            if "Transcript file is empty" in result.stderr:
+                logging.error(
+                    f"Post-processing failed: transcript file {transcript_file.name} is empty"
+                )
+            else:
+                logging.error(
+                    f"Post-processing failed for {transcript_file.name}: {result.stderr}"
+                )
             return None
 
     except subprocess.TimeoutExpired:

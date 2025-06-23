@@ -8,11 +8,17 @@ from datetime import datetime
 import os
 import sys
 import json
+from unittest.mock import patch
 
 # Add parent directory to path
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
-from voice_memo_watcher import VoiceMemoWatcher, AudioFile
+from voice_memo_watcher import (
+    VoiceMemoWatcher,
+    AudioFile,
+    AudioFileHandler,
+    WATCHDOG_AVAILABLE,
+)
 
 
 class TestVoiceMemoWatcher(unittest.TestCase):
@@ -31,7 +37,7 @@ class TestVoiceMemoWatcher(unittest.TestCase):
         self.transcript_out.mkdir(parents=True)
 
         self.watcher = VoiceMemoWatcher(
-            self.audio_in, self.audio_out, self.transcript_out
+            [self.audio_in], self.audio_out, self.transcript_out
         )
 
     def tearDown(self):
@@ -40,16 +46,17 @@ class TestVoiceMemoWatcher(unittest.TestCase):
             shutil.rmtree(self.test_dir)
 
     def test_directory_creation(self):
-        """Test that directories are created if they don't exist."""
+        """Test that output directories are created if they don't exist."""
         # Remove directories
-        shutil.rmtree(self.audio_in)
         shutil.rmtree(self.audio_out)
         shutil.rmtree(self.transcript_out)
 
-        # Create new watcher - should create directories
-        watcher = VoiceMemoWatcher(self.audio_in, self.audio_out, self.transcript_out)
+        # Create new watcher - should create output directories (but not input - those should exist)
+        watcher = VoiceMemoWatcher([self.audio_in], self.audio_out, self.transcript_out)
 
+        # Input directory should exist (it's our test setup directory)
         self.assertTrue(self.audio_in.exists())
+        # Output directories should be created
         self.assertTrue(self.audio_out.exists())
         self.assertTrue(self.transcript_out.exists())
 
@@ -164,6 +171,211 @@ class TestVoiceMemoWatcher(unittest.TestCase):
         self.assertEqual(results["processed"], 0)
         self.assertEqual(results["failed"], 0)
 
+    def test_multiple_input_directories(self):
+        """Test finding audio files across multiple input directories."""
+        # Create additional input directories
+        audio_in_2 = Path(self.test_dir) / "audio_in_2"
+        audio_in_3 = Path(self.test_dir) / "audio_in_3"
+        audio_in_2.mkdir()
+        audio_in_3.mkdir()
+
+        # Create test files in different directories
+        test_files = {
+            self.audio_in / "test1.mp3": "test content 1",
+            audio_in_2 / "test2.m4a": "test content 2",
+            audio_in_3 / "test3.wav": "test content 3",
+            audio_in_2 / "test.txt": "non-audio file",  # Should be ignored
+        }
+
+        for file_path, content in test_files.items():
+            file_path.write_text(content)
+
+        # Create watcher with multiple input directories
+        multi_watcher = VoiceMemoWatcher(
+            [self.audio_in, audio_in_2, audio_in_3], self.audio_out, self.transcript_out
+        )
+
+        files = multi_watcher.find_audio_files()
+
+        # Should find 3 audio files (ignoring .txt file)
+        self.assertEqual(len(files), 3)
+
+        # Check that files from all directories are found
+        found_names = [f.path.name for f in files]
+        self.assertIn("test1.mp3", found_names)
+        self.assertIn("test2.m4a", found_names)
+        self.assertIn("test3.wav", found_names)
+        self.assertNotIn("test.txt", found_names)
+
+    def test_nonexistent_input_directory(self):
+        """Test behavior when one of the input directories doesn't exist."""
+        nonexistent_dir = Path(self.test_dir) / "nonexistent"
+
+        # Create watcher with mix of existing and non-existing directories
+        multi_watcher = VoiceMemoWatcher(
+            [self.audio_in, nonexistent_dir], self.audio_out, self.transcript_out
+        )
+
+        # Should not crash, just log warning
+        files = multi_watcher.find_audio_files()
+        self.assertEqual(len(files), 0)  # No files in existing empty directory
+
+    def test_single_directory_backward_compatibility(self):
+        """Test that single directory usage still works (backward compatibility)."""
+        # Test passing a single Path instead of list
+        single_watcher = VoiceMemoWatcher(
+            self.audio_in, self.audio_out, self.transcript_out  # Single Path, not list
+        )
+
+        # Should convert to list internally
+        self.assertEqual(len(single_watcher.audio_in_dirs), 1)
+        self.assertEqual(single_watcher.audio_in_dirs[0], self.audio_in)
+
+    @unittest.skipIf(not WATCHDOG_AVAILABLE, "watchdog not available")
+    def test_directory_event_handling(self):
+        """Test that directory events trigger file scanning."""
+        from watchdog.events import DirCreatedEvent
+
+        # Create test audio files
+        test_files = ["test1.mp3", "test2.m4a", "test3.wav"]
+        for test_file in test_files:
+            (self.audio_in / test_file).write_text("test audio content")
+
+        # Create handler
+        handler = AudioFileHandler(self.watcher)
+
+        # Mock the file processing
+        processed_files = []
+        original_handle_file = handler._handle_file_event
+
+        def mock_handle_file(file_path, event_type):
+            processed_files.append((file_path.name, event_type))
+
+        handler._handle_file_event = mock_handle_file
+
+        # Simulate directory creation event
+        event = DirCreatedEvent(str(self.audio_in))
+        handler.on_created(event)
+
+        # Should have found all audio files
+        self.assertEqual(len(processed_files), 3)
+        file_names = [f[0] for f in processed_files]
+        self.assertIn("test1.mp3", file_names)
+        self.assertIn("test2.m4a", file_names)
+        self.assertIn("test3.wav", file_names)
+
+        # All should be marked as "found_in_directory"
+        for _, event_type in processed_files:
+            self.assertEqual(event_type, "found_in_directory")
+
+    def test_empty_transcript_quarantine(self):
+        """Test that files producing empty transcripts are quarantined."""
+        # Create a test audio file
+        test_file = self.audio_in / "empty_transcript.mp3"
+        test_file.write_text("test audio content")
+
+        # Create AudioFile object
+        audio_file = AudioFile(path=test_file, timestamp=datetime.now())
+
+        # Mock the transcription to create an empty transcript
+        transcript_file = self.transcript_out / "empty_transcript_transcript.txt"
+        transcript_file.write_text("")  # Empty transcript
+
+        # Mock subprocess to simulate successful transcription
+        with patch("subprocess.run") as mock_run:
+            mock_run.return_value.returncode = 0
+            mock_run.return_value.stderr = ""
+
+            # Process the file
+            result = self.watcher.process_file(audio_file)
+
+        # Should return False for failed processing
+        self.assertFalse(result)
+
+        # Check that quarantine directory was created
+        quarantine_dir = self.audio_out.parent / "quarantine"
+        self.assertTrue(quarantine_dir.exists())
+
+        # Check that file was moved to quarantine
+        quarantined_file = quarantine_dir / "empty_transcript.mp3"
+        self.assertTrue(quarantined_file.exists())
+        self.assertFalse(test_file.exists())
+
+        # Check that empty transcript was cleaned up
+        self.assertFalse(transcript_file.exists())
+
+
+class TestEnvironmentVariableParsing(unittest.TestCase):
+    """Test environment variable parsing for multiple directories."""
+
+    def test_colon_separated_paths(self):
+        """Test parsing colon-separated paths from environment variable."""
+        # Mock environment variable with colon-separated paths
+        with patch.dict(
+            os.environ,
+            {
+                "AUDIO_IN": "/path/A:/path/B:/path/C:/path/D",
+                "AUDIO_OUT": "/tmp/out",
+                "TRANSCRIPT_OUT": "/tmp/transcripts",
+            },
+        ):
+            # Simulate argument parsing that would happen in main()
+            from voice_memo_watcher import main
+            import argparse
+
+            # Create a mock args object
+            class MockArgs:
+                audio_in_dirs = None
+                audio_out = None
+                transcript_out = None
+                verbose = False
+                watch = False
+                interval = 60
+
+            args = MockArgs()
+
+            # Test the parsing logic from main()
+            if args.audio_in_dirs:
+                audio_in_dirs = [
+                    Path(os.path.expanduser(str(path))) for path in args.audio_in_dirs
+                ]
+            else:
+                env_audio_in = os.getenv(
+                    "AUDIO_IN", "~/Dropbox/01-projects/voice_memo_inbox"
+                )
+                if ":" in env_audio_in:
+                    audio_in_dirs = [
+                        Path(os.path.expanduser(path.strip()))
+                        for path in env_audio_in.split(":")
+                    ]
+                else:
+                    audio_in_dirs = [Path(os.path.expanduser(env_audio_in))]
+
+            # Should parse into 4 directories
+            self.assertEqual(len(audio_in_dirs), 4)
+            self.assertEqual(str(audio_in_dirs[0]), "/path/A")
+            self.assertEqual(str(audio_in_dirs[1]), "/path/B")
+            self.assertEqual(str(audio_in_dirs[2]), "/path/C")
+            self.assertEqual(str(audio_in_dirs[3]), "/path/D")
+
+    def test_single_path_env_var(self):
+        """Test parsing single path from environment variable (backward compatibility)."""
+        with patch.dict(os.environ, {"AUDIO_IN": "/single/path"}):
+            env_audio_in = os.getenv(
+                "AUDIO_IN", "~/Dropbox/01-projects/voice_memo_inbox"
+            )
+            if ":" in env_audio_in:
+                audio_in_dirs = [
+                    Path(os.path.expanduser(path.strip()))
+                    for path in env_audio_in.split(":")
+                ]
+            else:
+                audio_in_dirs = [Path(os.path.expanduser(env_audio_in))]
+
+            # Should create list with single directory
+            self.assertEqual(len(audio_in_dirs), 1)
+            self.assertEqual(str(audio_in_dirs[0]), "/single/path")
+
 
 class TestIntegration(unittest.TestCase):
     """Integration tests using actual test files."""
@@ -210,7 +422,7 @@ class TestIntegration(unittest.TestCase):
         shutil.copy2(src, dst)
 
         # Create watcher
-        watcher = VoiceMemoWatcher(self.audio_in, self.audio_out, self.transcript_out)
+        watcher = VoiceMemoWatcher([self.audio_in], self.audio_out, self.transcript_out)
 
         # Run processing
         results = watcher.run()

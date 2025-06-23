@@ -9,11 +9,22 @@ import json
 import re
 import time
 import signal
+import shutil
 from pathlib import Path
 from datetime import datetime
 from typing import Optional, Dict, Any, List
 from dataclasses import dataclass
 from dotenv import load_dotenv
+
+try:
+    from watchdog.observers import Observer
+    from watchdog.events import FileSystemEventHandler
+
+    WATCHDOG_AVAILABLE = True
+except ImportError:
+    Observer = None
+    FileSystemEventHandler = None
+    WATCHDOG_AVAILABLE = False
 
 try:
     from mutagen.mp4 import MP4
@@ -31,26 +42,212 @@ class AudioFile:
     duration: Optional[float] = None
 
 
-class VoiceMemoWatcher:
-    """Watches for voice memos and processes them through the transcription pipeline."""
+class AudioFileHandler(FileSystemEventHandler):
+    """File system event handler for audio files."""
 
-    def __init__(self, audio_in: Path, audio_out: Path, transcript_out: Path):
-        self.audio_in = audio_in
+    def __init__(self, watcher: "VoiceMemoWatcher"):
+        self.watcher = watcher
+        self.logger = logging.getLogger(__name__)
+        self.audio_extensions = {".m4a", ".mp3", ".wav", ".flac", ".ogg", ".opus"}
+        self.processed_files = set()  # Track recently processed files
+
+    def on_created(self, event):
+        """Handle file creation events."""
+        if event.is_directory:
+            # Handle directory creation (e.g., USB drive mounted)
+            self._handle_directory_event(Path(event.src_path))
+        else:
+            self._handle_file_event(Path(event.src_path), "created")
+
+    def on_modified(self, event):
+        """Handle file modification events."""
+        if event.is_directory:
+            # Handle directory modification (e.g., new files added)
+            self._handle_directory_event(Path(event.src_path))
+        else:
+            self._handle_file_event(Path(event.src_path), "modified")
+
+    def on_moved(self, event):
+        """Handle file move events."""
+        if not event.is_directory:
+            self._handle_file_event(Path(event.dest_path), "moved")
+
+    def _handle_directory_event(self, dir_path: Path):
+        """Handle directory events (e.g., USB drive mounted)."""
+        self.logger.info(f"Directory event detected: {dir_path}")
+
+        # Check if this is one of our watched directories or a parent of one
+        relevant_dir = None
+        for watched_dir in self.watcher.audio_in_dirs:
+            # Check if the event is for the watched directory itself
+            if dir_path == watched_dir:
+                relevant_dir = watched_dir
+                break
+            # Check if the event is for a parent directory (e.g., /Volumes/VoiceBox when we watch /Volumes/VoiceBox/A)
+            try:
+                if watched_dir.is_relative_to(dir_path):
+                    # The watched directory is a subdirectory of the event directory
+                    # Check if the watched directory now exists
+                    if watched_dir.exists():
+                        relevant_dir = watched_dir
+                        break
+            except (ValueError, AttributeError):
+                # is_relative_to might not be available in older Python versions
+                if str(watched_dir).startswith(str(dir_path)):
+                    if watched_dir.exists():
+                        relevant_dir = watched_dir
+                        break
+
+        if not relevant_dir:
+            self.logger.debug(
+                f"Directory {dir_path} is not relevant to watched directories, ignoring"
+            )
+            return
+
+        # Scan the relevant directory for audio files
+        self.logger.info(f"Scanning directory for audio files: {relevant_dir}")
+        try:
+            audio_files = self.watcher.find_audio_files_in_directory(relevant_dir)
+
+            # Filter out already processed files
+            unprocessed_files = []
+            for audio_file in audio_files:
+                file_key = str(audio_file.path)
+                if file_key not in self.processed_files:
+                    unprocessed_files.append(audio_file)
+                    # Mark as processed to avoid duplicate processing
+                    self.processed_files.add(file_key)
+
+            if unprocessed_files:
+                self.logger.info(
+                    f"Found {len(unprocessed_files)} unprocessed audio files in {relevant_dir}"
+                )
+                for audio_file in unprocessed_files:
+                    # Process the file
+                    success = self.watcher.process_file(audio_file)
+                    if success:
+                        self.logger.info(
+                            f"Successfully processed: {audio_file.path.name}"
+                        )
+                    else:
+                        self.logger.error(f"Failed to process: {audio_file.path.name}")
+                        # Remove from processed set so it can be retried
+                        self.processed_files.discard(str(audio_file.path))
+            else:
+                self.logger.info(f"No unprocessed audio files found in {relevant_dir}")
+
+        except Exception as e:
+            self.logger.error(f"Error scanning directory {relevant_dir}: {e}")
+
+    def _handle_file_event(self, file_path: Path, event_type: str):
+        """Process a file system event for a potential audio file."""
+        # Check if it's an audio file
+        if file_path.suffix.lower() not in self.audio_extensions:
+            return
+
+        # Avoid processing the same file multiple times in quick succession
+        file_key = str(file_path)
+        if file_key in self.processed_files:
+            self.logger.debug(f"Skipping recently processed file: {file_path}")
+            return
+
+        self.logger.info(f"Audio file {event_type}: {file_path}")
+
+        # Small delay to ensure file is completely written
+        time.sleep(1)
+
+        if file_path.exists() and file_path.is_file():
+            try:
+                # Create AudioFile object
+                audio_file = AudioFile(path=file_path)
+
+                # Extract metadata (same logic as find_audio_files)
+                if file_path.suffix.lower() == ".m4a":
+                    try:
+                        audio = MP4(str(file_path))
+                        if "©day" in audio:
+                            date_str = audio["©day"][0]
+                            try:
+                                audio_file.timestamp = datetime.fromisoformat(
+                                    date_str.replace("Z", "+00:00")
+                                )
+                            except:
+                                self.logger.warning(
+                                    f"Could not parse date from metadata: {date_str}"
+                                )
+
+                        if audio.info.length:
+                            audio_file.duration = audio.info.length
+                    except Exception as e:
+                        self.logger.warning(
+                            f"Could not read metadata from {file_path}: {e}"
+                        )
+
+                # Fallback to file modification time
+                if not audio_file.timestamp:
+                    stat = file_path.stat()
+                    audio_file.timestamp = datetime.fromtimestamp(stat.st_mtime)
+
+                # Mark as processed
+                self.processed_files.add(file_key)
+
+                # Process the file
+                success = self.watcher.process_file(audio_file)
+
+                if success:
+                    self.logger.info(
+                        f"Successfully processed {event_type} file: {file_path}"
+                    )
+                else:
+                    self.logger.error(
+                        f"Failed to process {event_type} file: {file_path}"
+                    )
+                    # Remove from processed set so it can be retried
+                    self.processed_files.discard(file_key)
+
+            except Exception as e:
+                self.logger.error(f"Error handling {event_type} file {file_path}: {e}")
+                self.processed_files.discard(file_key)
+
+        # Clean up old entries from processed_files set to prevent memory growth
+        if len(self.processed_files) > 1000:
+            # Keep only the most recent 500 entries
+            recent_files = list(self.processed_files)[-500:]
+            self.processed_files = set(recent_files)
+
+
+class VoiceMemoWatcher:
+    """Watches for voice memos and processes them through the transcription pipeline.
+
+    Supports multiple input directories for USB voice memo devices with A, B, C, D folders.
+    Environment variable format: AUDIO_IN=/path/A:/path/B:/path/C:/path/D
+    Command line format: --audio-in /path/A --audio-in /path/B
+    """
+
+    def __init__(
+        self, audio_in_dirs: List[Path], audio_out: Path, transcript_out: Path
+    ):
+        self.audio_in_dirs = (
+            audio_in_dirs if isinstance(audio_in_dirs, list) else [audio_in_dirs]
+        )
         self.audio_out = audio_out
         self.transcript_out = transcript_out
         self.logger = logging.getLogger(__name__)
         self.running = True
 
-        # Create directories if they don't exist
-        for dir_path in [audio_in, audio_out, transcript_out]:
+        # Create output directories if they don't exist (but not input dirs - USB devices should exist when plugged in)
+        for dir_path in [audio_out, transcript_out]:
             dir_path.mkdir(parents=True, exist_ok=True)
 
-    def find_audio_files(self) -> List[AudioFile]:
-        """Find all audio files in the input directory."""
+    def find_audio_files_in_directory(self, directory: Path) -> List[AudioFile]:
+        """Find all audio files in a specific directory."""
         audio_extensions = {".m4a", ".mp3", ".wav", ".flac", ".ogg", ".opus"}
         files = []
 
-        for file_path in self.audio_in.iterdir():
+        if not directory.exists():
+            return files
+
+        for file_path in directory.iterdir():
             if file_path.is_file() and file_path.suffix.lower() in audio_extensions:
                 audio_file = AudioFile(path=file_path)
 
@@ -84,6 +281,20 @@ class VoiceMemoWatcher:
                     audio_file.timestamp = datetime.fromtimestamp(stat.st_mtime)
 
                 files.append(audio_file)
+
+        return sorted(files, key=lambda f: f.timestamp or datetime.min)
+
+    def find_audio_files(self) -> List[AudioFile]:
+        """Find all audio files in all input directories."""
+        files = []
+
+        for audio_in_dir in self.audio_in_dirs:
+            if not audio_in_dir.exists():
+                self.logger.warning(f"Input directory does not exist: {audio_in_dir}")
+                continue
+
+            dir_files = self.find_audio_files_in_directory(audio_in_dir)
+            files.extend(dir_files)
 
         return sorted(files, key=lambda f: f.timestamp or datetime.min)
 
@@ -184,8 +395,33 @@ class VoiceMemoWatcher:
             # Extract title from transcript and update content
             title = self.extract_title_from_transcript(transcript_file)
 
+            # Read and validate transcript content
+            content = transcript_file.read_text(encoding="utf-8").strip()
+
+            # Check if transcript is empty or too short
+            if not content or len(content) < 10:
+                self.logger.error(
+                    f"Transcript is empty or too short for {audio_file.path.name}"
+                )
+                self.logger.debug(f"Transcript content length: {len(content)}")
+
+                # Create quarantine directory if it doesn't exist
+                quarantine_dir = self.audio_out.parent / "quarantine"
+                quarantine_dir.mkdir(exist_ok=True)
+
+                # Move the problematic audio file to quarantine
+                quarantine_audio_path = quarantine_dir / audio_file.path.name
+                shutil.move(str(audio_file.path), str(quarantine_audio_path))
+
+                # Clean up the empty transcript
+                transcript_file.unlink()
+
+                self.logger.warning(
+                    f"Moved problematic file to quarantine: {quarantine_audio_path}"
+                )
+                return False
+
             # Replace <title> tags with markdown header if found
-            content = transcript_file.read_text(encoding="utf-8")
             title_match = re.search(r"<title>(.*?)</title>", content, re.IGNORECASE)
             if title_match:
                 # Replace the title tag with markdown header
@@ -210,13 +446,13 @@ class VoiceMemoWatcher:
                 )
                 new_transcript_name = f"{timestamp_str}_{audio_file.path.stem}.md"
 
-            # Move audio file to output directory
+            # Move audio file to output directory (handles cross-filesystem moves)
             new_audio_path = self.audio_out / new_audio_name
-            audio_file.path.rename(new_audio_path)
+            shutil.move(str(audio_file.path), str(new_audio_path))
 
-            # Rename transcript file
+            # Move transcript file (handles cross-filesystem moves)
             new_transcript_path = self.transcript_out / new_transcript_name
-            transcript_file.rename(new_transcript_path)
+            shutil.move(str(transcript_file), str(new_transcript_path))
 
             # Preserve timestamps
             if audio_file.timestamp:
@@ -248,10 +484,14 @@ class VoiceMemoWatcher:
         files = self.find_audio_files()
 
         if not files:
-            self.logger.info("No audio files found to process")
+            self.logger.info(
+                f"No audio files found to process in directories: {[str(d) for d in self.audio_in_dirs]}"
+            )
             return {"processed": 0, "failed": 0, "total": 0}
 
-        self.logger.info(f"Found {len(files)} audio files to process")
+        self.logger.info(
+            f"Found {len(files)} audio files to process across {len(self.audio_in_dirs)} directories"
+        )
 
         processed = 0
         failed = 0
@@ -272,7 +512,9 @@ class VoiceMemoWatcher:
     def run_watch_mode(self, interval: int = 60) -> None:
         """Run in watch mode, checking for new files every interval seconds."""
         self.logger.info(f"Starting watch mode - checking every {interval} seconds")
-        self.logger.info(f"Watching directory: {self.audio_in.absolute()}")
+        self.logger.info(
+            f"Watching directories: {[str(d.absolute()) for d in self.audio_in_dirs]}"
+        )
         self.logger.info("Press Ctrl+C to stop")
 
         # Set up signal handler for graceful shutdown
@@ -337,6 +579,146 @@ class VoiceMemoWatcher:
             if total_failed > 0:
                 sys.exit(1)
 
+    def run_monitor_mode(self) -> None:
+        """Run in FSEvents monitor mode, processing files as they appear."""
+        if not WATCHDOG_AVAILABLE:
+            self.logger.error(
+                "FSEvents monitoring requires the 'watchdog' library. Install with: uv add watchdog"
+            )
+            self.logger.info("Falling back to watch mode...")
+            self.run_watch_mode(60)
+            return
+
+        self.logger.info("Starting FSEvents monitor mode")
+        self.logger.info(
+            f"Monitoring directories: {[str(d.absolute()) for d in self.audio_in_dirs]}"
+        )
+        self.logger.info("Files will be processed immediately when detected")
+        self.logger.info("Press Ctrl+C to stop")
+
+        # Set up signal handler for graceful shutdown
+        def signal_handler(signum, frame):
+            self.logger.info("Received interrupt signal")
+            self.stop()
+
+        signal.signal(signal.SIGINT, signal_handler)
+        signal.signal(signal.SIGTERM, signal_handler)
+
+        # Create event handler and observer
+        event_handler = AudioFileHandler(self)
+        observer = Observer()
+
+        # Add watches for all input directories
+        watches = []
+        for audio_in_dir in self.audio_in_dirs:
+            if audio_in_dir.exists():
+                try:
+                    watch = observer.schedule(
+                        event_handler, str(audio_in_dir), recursive=False
+                    )
+                    watches.append((watch, audio_in_dir))
+                    self.logger.info(f"Watching directory: {audio_in_dir}")
+                except Exception as e:
+                    self.logger.error(f"Failed to watch directory {audio_in_dir}: {e}")
+            else:
+                self.logger.warning(
+                    f"Directory does not exist (will retry if it appears): {audio_in_dir}"
+                )
+
+        if not watches:
+            self.logger.error("No directories could be watched. Exiting.")
+            return
+
+        # Process any existing files first
+        self.logger.info("Processing any existing files...")
+        initial_results = self.run()
+        if initial_results["total"] > 0:
+            self.logger.info(
+                f"Initial scan: {initial_results['processed']} processed, {initial_results['failed']} failed"
+            )
+
+        # Start the observer
+        observer.start()
+        self.logger.info("FSEvents monitoring started. Waiting for new files...")
+
+        total_processed = initial_results["processed"]
+        total_failed = initial_results["failed"]
+
+        try:
+            # Keep the main thread alive
+            while self.running:
+                time.sleep(1)
+
+                # Periodically check for new directories (e.g., USB device mounted)
+                # This happens every 30 seconds
+                if int(time.time()) % 30 == 0:
+                    for audio_in_dir in self.audio_in_dirs:
+                        if audio_in_dir.exists():
+                            # Check if we're already watching this directory
+                            already_watching = any(
+                                audio_in_dir == watched_dir
+                                for _, watched_dir in watches
+                            )
+                            if not already_watching:
+                                try:
+                                    watch = observer.schedule(
+                                        event_handler,
+                                        str(audio_in_dir),
+                                        recursive=False,
+                                    )
+                                    watches.append((watch, audio_in_dir))
+                                    self.logger.info(
+                                        f"Started watching newly available directory: {audio_in_dir}"
+                                    )
+
+                                    # Scan for existing files in the newly available directory
+                                    self.logger.info(
+                                        f"Scanning newly available directory for existing files: {audio_in_dir}"
+                                    )
+                                    existing_files = self.find_audio_files_in_directory(
+                                        audio_in_dir
+                                    )
+                                    if existing_files:
+                                        self.logger.info(
+                                            f"Found {len(existing_files)} existing files in {audio_in_dir}"
+                                        )
+                                        for audio_file in existing_files:
+                                            if self.process_file(audio_file):
+                                                self.logger.info(
+                                                    f"Processed existing file: {audio_file.path.name}"
+                                                )
+                                            else:
+                                                self.logger.error(
+                                                    f"Failed to process existing file: {audio_file.path.name}"
+                                                )
+                                    else:
+                                        self.logger.info(
+                                            f"No existing files found in {audio_in_dir}"
+                                        )
+                                except Exception as e:
+                                    self.logger.error(
+                                        f"Failed to watch directory {audio_in_dir}: {e}"
+                                    )
+
+        except KeyboardInterrupt:
+            self.logger.info("Received keyboard interrupt")
+            self.stop()
+        except Exception as e:
+            self.logger.error(f"Unexpected error in monitor mode: {e}")
+            self.stop()
+        finally:
+            # Stop the observer
+            observer.stop()
+            observer.join()
+
+            # Print final summary
+            self.logger.info("FSEvents monitoring stopped")
+            print(f"\nFinal summary:")
+            print(f"  Initial files processed: {initial_results['processed']}")
+            print(f"  Initial failures: {initial_results['failed']}")
+            print("  Real-time processing: enabled")
+            print("  Note: Real-time processed files are logged individually above")
+
 
 def main():
     parser = argparse.ArgumentParser(
@@ -345,7 +727,9 @@ def main():
     parser.add_argument(
         "--audio-in",
         type=Path,
-        help="Input directory for audio files (default: from .env)",
+        action="append",
+        dest="audio_in_dirs",
+        help="Input directory for audio files (can be specified multiple times, default: from .env)",
     )
     parser.add_argument(
         "--audio-out",
@@ -367,6 +751,12 @@ def main():
         help="Run in watch mode (continuously monitor for new files)",
     )
     parser.add_argument(
+        "--monitor",
+        "-M",
+        action="store_true",
+        help="Run in FSEvents monitor mode (real-time file detection, requires watchdog)",
+    )
+    parser.add_argument(
         "--interval",
         "-i",
         type=int,
@@ -386,11 +776,23 @@ def main():
     load_dotenv()
 
     # Get directories from args or environment
-    audio_in = args.audio_in or Path(
-        os.path.expanduser(
-            os.getenv("AUDIO_IN", "~/Dropbox/01-projects/voice_memo_inbox")
-        )
-    )
+    if args.audio_in_dirs:
+        # Use directories from command line arguments
+        audio_in_dirs = [
+            Path(os.path.expanduser(str(path))) for path in args.audio_in_dirs
+        ]
+    else:
+        # Parse from environment variable (supports colon-separated paths)
+        env_audio_in = os.getenv("AUDIO_IN", "~/Dropbox/01-projects/voice_memo_inbox")
+        if ":" in env_audio_in:
+            # Split colon-separated paths
+            audio_in_dirs = [
+                Path(os.path.expanduser(path.strip()))
+                for path in env_audio_in.split(":")
+            ]
+        else:
+            # Single directory
+            audio_in_dirs = [Path(os.path.expanduser(env_audio_in))]
     audio_out = args.audio_out or Path(
         os.path.expanduser(
             os.getenv("AUDIO_OUT", "~/Dropbox/01-projects/voice_memo_outbox")
@@ -402,10 +804,18 @@ def main():
         )
     )
 
-    # Create watcher
-    watcher = VoiceMemoWatcher(audio_in, audio_out, transcript_out)
+    # Validate mutually exclusive options
+    if args.watch and args.monitor:
+        print("Error: --watch and --monitor are mutually exclusive. Choose one.")
+        sys.exit(1)
 
-    if args.watch:
+    # Create watcher
+    watcher = VoiceMemoWatcher(audio_in_dirs, audio_out, transcript_out)
+
+    if args.monitor:
+        # Run in FSEvents monitor mode
+        watcher.run_monitor_mode()
+    elif args.watch:
         # Run in watch mode
         watcher.run_watch_mode(args.interval)
     else:
