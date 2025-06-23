@@ -244,14 +244,15 @@ class TestVoiceMemoWatcher(unittest.TestCase):
         # Create handler
         handler = AudioFileHandler(self.watcher)
 
-        # Mock the file processing
+        # Mock the watcher's process_file method to track processed files
         processed_files = []
-        original_handle_file = handler._handle_file_event
+        original_process_file = self.watcher.process_file
 
-        def mock_handle_file(file_path, event_type):
-            processed_files.append((file_path.name, event_type))
+        def mock_process_file(audio_file):
+            processed_files.append(audio_file.path.name)
+            return True  # Simulate successful processing
 
-        handler._handle_file_event = mock_handle_file
+        self.watcher.process_file = mock_process_file
 
         # Simulate directory creation event
         event = DirCreatedEvent(str(self.audio_in))
@@ -259,14 +260,9 @@ class TestVoiceMemoWatcher(unittest.TestCase):
 
         # Should have found all audio files
         self.assertEqual(len(processed_files), 3)
-        file_names = [f[0] for f in processed_files]
-        self.assertIn("test1.mp3", file_names)
-        self.assertIn("test2.m4a", file_names)
-        self.assertIn("test3.wav", file_names)
-
-        # All should be marked as "found_in_directory"
-        for _, event_type in processed_files:
-            self.assertEqual(event_type, "found_in_directory")
+        self.assertIn("test1.mp3", processed_files)
+        self.assertIn("test2.m4a", processed_files)
+        self.assertIn("test3.wav", processed_files)
 
     def test_empty_transcript_quarantine(self):
         """Test that files producing empty transcripts are quarantined."""
