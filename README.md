@@ -53,18 +53,30 @@ python voice_memo_watcher.py
 # Use custom directories
 python voice_memo_watcher.py --audio-in ~/voice_inbox --audio-out ~/voice_processed --transcript-out ~/transcripts
 
+# Multiple input directories (USB voice memo device with A, B, C, D folders)
+python voice_memo_watcher.py --audio-in /Volumes/VoiceBox/A --audio-in /Volumes/VoiceBox/B --audio-in /Volumes/VoiceBox/C --audio-in /Volumes/VoiceBox/D
+
+# FSEvents monitor mode (recommended - real-time, zero CPU when idle)
+python voice_memo_watcher.py --monitor
+
+# Watch mode for continuous monitoring (polling every 60 seconds)
+python voice_memo_watcher.py --watch
+
 # Verbose logging
 python voice_memo_watcher.py --verbose
 ```
 
 ### Features
 
-- **Automated Processing**: Processes all audio files in the input directory through the transcription pipeline
+- **Real-time Processing**: FSEvents monitor mode processes files immediately when they appear (zero CPU when idle)
+- **Multiple Input Directories**: Supports USB voice memo devices with multiple folders (A, B, C, D)
+- **Cross-Filesystem Moves**: Handles moving files from USB drives to local storage safely
 - **Smart Naming**: Extracts titles from `<title>` tags and creates meaningful filenames
 - **Obsidian-Ready**: Outputs markdown files (`.md`) with proper headers and space-friendly filenames
 - **M4A Metadata**: Extracts creation timestamps from M4A voice memo files
 - **File Organization**: Separates input, processed audio, and transcript files into different directories
-- **Path Logging**: Prints full file paths for easy access and opening
+- **USB Device Awareness**: Automatically detects when USB devices are mounted/unmounted
+- **macOS Integration**: Launch Agent templates for automatic startup and management
 
 ### Configuration
 
@@ -72,18 +84,82 @@ Add voice memo directories to your `.env` file:
 
 ```env
 # Voice memo watcher directories
-AUDIO_IN=voice_memo_inbox
-AUDIO_OUT=voice_memo_outbox  
-TRANSCRIPT_OUT=voice_memo_transcripts
+
+# Single directory (backward compatible)
+AUDIO_IN=~/Dropbox/01-projects/voice_memo_inbox
+
+# Multiple directories (colon-separated for USB voice memo devices)
+AUDIO_IN=/Volumes/VoiceBox/A:/Volumes/VoiceBox/B:/Volumes/VoiceBox/C:/Volumes/VoiceBox/D
+
+# Output directories
+AUDIO_OUT=~/Dropbox/01-projects/voice_memo_outbox  
+TRANSCRIPT_OUT=~/Dropbox/01-projects/voice_memo_transcripts
 ```
+
+See `.env.example` for a complete configuration template.
 
 ### Workflow
 
-1. **Drop voice memos** into the `AUDIO_IN` directory
-2. **Run the watcher** to process all files
+1. **Drop voice memos** into the `AUDIO_IN` directory/directories (or plug in USB device)
+2. **Run the watcher** to process all files from all input directories
 3. **Find organized output**:
    - Original audio files → `AUDIO_OUT` (renamed with timestamps/titles)
    - Transcripts → `TRANSCRIPT_OUT` (markdown files with `# Title` headers)
+
+### Monitoring Modes
+
+#### 1. FSEvents Monitor Mode (Recommended)
+```bash
+python voice_memo_watcher.py --monitor
+```
+- **Real-time processing** - files processed immediately when added
+- **Zero CPU usage** when no files are present
+- **USB device awareness** - automatically handles mounting/unmounting
+- **Requires:** `watchdog` library (included in dependencies)
+
+#### 2. Watch Mode (Polling)
+```bash
+python voice_memo_watcher.py --watch --interval 60
+```
+- **Periodic checking** every 60 seconds (configurable)
+- **Continuous monitoring** with regular intervals
+- **More compatible** - works without additional dependencies
+
+#### 3. Single Run Mode
+```bash
+python voice_memo_watcher.py
+```
+- **Process existing files** and exit
+- **Perfect for cron jobs** or manual processing
+- **Lowest resource usage**
+
+### USB Voice Memo Device Workflow
+
+1. **Configure** `.env` with your device's directory structure:
+   ```env
+   AUDIO_IN=/Volumes/VoiceBox/A:/Volumes/VoiceBox/B:/Volumes/VoiceBox/C:/Volumes/VoiceBox/D
+   ```
+2. **Plug in** your USB voice memo device
+3. **Run** in monitor mode: `python voice_memo_watcher.py --monitor`
+4. **Files are processed** automatically and moved from USB to local storage
+
+### Automated Setup with Launch Agents
+
+For automatic startup and background processing, use the provided Launch Agent templates:
+
+```bash
+# Copy the FSEvents monitor template
+cp launch_agents/com.user.voicememo.monitor.plist ~/Library/LaunchAgents/
+
+# Edit paths to match your setup
+nano ~/Library/LaunchAgents/com.user.voicememo.monitor.plist
+
+# Load and start the agent
+launchctl load ~/Library/LaunchAgents/com.user.voicememo.monitor.plist
+launchctl start com.user.voicememo.monitor
+```
+
+See `launch_agents/README.md` for detailed setup instructions.
 
 ### Output Example
 
