@@ -300,6 +300,54 @@ class TestVoiceMemoWatcher(unittest.TestCase):
         # Check that empty transcript was cleaned up
         self.assertFalse(transcript_file.exists())
 
+    @unittest.skipIf(not WATCHDOG_AVAILABLE, "watchdog not available")
+    def test_modification_time_tracking(self):
+        """Test that files with different modification times are processed correctly."""
+        from watchdog.events import DirModifiedEvent
+        import time
+
+        # Create a test audio file
+        test_file = self.audio_in / "test_mtime.mp3"
+        test_file.write_text("test audio content")
+
+        # Create handler
+        handler = AudioFileHandler(self.watcher)
+
+        # Track processed files
+        processed_files = []
+
+        def mock_process_file(audio_file):
+            processed_files.append(audio_file.path.name)
+            return True
+
+        self.watcher.process_file = mock_process_file
+
+        # First directory scan
+        event = DirModifiedEvent(str(self.audio_in))
+        handler.on_modified(event)
+
+        # Should have processed the file once
+        self.assertEqual(len(processed_files), 1)
+        self.assertEqual(processed_files[0], "test_mtime.mp3")
+
+        # Simulate the same event again without modifying the file
+        processed_files.clear()
+        handler.on_modified(event)
+
+        # Should not process the file again (same modification time)
+        self.assertEqual(len(processed_files), 0)
+
+        # Now modify the file
+        time.sleep(0.1)  # Ensure different timestamp
+        test_file.write_text("modified audio content")
+
+        # Trigger directory event again
+        handler.on_modified(event)
+
+        # Should process the file again (different modification time)
+        self.assertEqual(len(processed_files), 1)
+        self.assertEqual(processed_files[0], "test_mtime.mp3")
+
 
 class TestEnvironmentVariableParsing(unittest.TestCase):
     """Test environment variable parsing for multiple directories."""

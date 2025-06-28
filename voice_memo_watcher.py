@@ -1,4 +1,4 @@
-#!/usr/bin/env python3
+#!/usr/bin/env python3 -u
 
 import os
 import sys
@@ -29,7 +29,11 @@ except ImportError:
 try:
     from mutagen.mp4 import MP4
 except ImportError:
-    print("Error: mutagen is required. Install with: uv pip install mutagen")
+    print(
+        "Error: mutagen is required. Install with: uv pip install mutagen",
+        file=sys.stderr,
+        flush=True,
+    )
     sys.exit(1)
 
 
@@ -49,7 +53,9 @@ class AudioFileHandler(FileSystemEventHandler):
         self.watcher = watcher
         self.logger = logging.getLogger(__name__)
         self.audio_extensions = {".m4a", ".mp3", ".wav", ".flac", ".ogg", ".opus"}
-        self.processed_files = set()  # Track recently processed files
+        self.processed_files = (
+            {}
+        )  # Track recently processed files with their modification time
 
     def on_created(self, event):
         """Handle file creation events."""
@@ -106,17 +112,34 @@ class AudioFileHandler(FileSystemEventHandler):
 
         # Scan the relevant directory for audio files
         self.logger.info(f"Scanning directory for audio files: {relevant_dir}")
+        self.logger.debug(f"Current processed_files set: {self.processed_files}")
         try:
             audio_files = self.watcher.find_audio_files_in_directory(relevant_dir)
+            self.logger.debug(
+                f"Found {len(audio_files)} total audio files in directory"
+            )
 
             # Filter out already processed files
             unprocessed_files = []
             for audio_file in audio_files:
                 file_key = str(audio_file.path)
-                if file_key not in self.processed_files:
-                    unprocessed_files.append(audio_file)
-                    # Mark as processed to avoid duplicate processing
-                    self.processed_files.add(file_key)
+                file_mtime = audio_file.path.stat().st_mtime
+
+                # Check if file was already processed with the same modification time
+                if file_key in self.processed_files:
+                    if self.processed_files[file_key] == file_mtime:
+                        self.logger.debug(
+                            f"Skipping already processed file: {audio_file.path.name}"
+                        )
+                        continue
+                    else:
+                        self.logger.info(
+                            f"File {audio_file.path.name} has been modified since last processing"
+                        )
+
+                unprocessed_files.append(audio_file)
+                # Mark as processed with current modification time
+                self.processed_files[file_key] = file_mtime
 
             if unprocessed_files:
                 self.logger.info(
@@ -131,8 +154,8 @@ class AudioFileHandler(FileSystemEventHandler):
                         )
                     else:
                         self.logger.error(f"Failed to process: {audio_file.path.name}")
-                        # Remove from processed set so it can be retried
-                        self.processed_files.discard(str(audio_file.path))
+                        # Remove from processed dict so it can be retried
+                        self.processed_files.pop(str(audio_file.path), None)
             else:
                 self.logger.info(f"No unprocessed audio files found in {relevant_dir}")
 
@@ -147,9 +170,16 @@ class AudioFileHandler(FileSystemEventHandler):
 
         # Avoid processing the same file multiple times in quick succession
         file_key = str(file_path)
-        if file_key in self.processed_files:
-            self.logger.debug(f"Skipping recently processed file: {file_path}")
-            return
+        file_mtime = file_path.stat().st_mtime if file_path.exists() else None
+
+        if file_key in self.processed_files and file_mtime:
+            if self.processed_files[file_key] == file_mtime:
+                self.logger.debug(f"Skipping recently processed file: {file_path}")
+                return
+            else:
+                self.logger.info(
+                    f"File {file_path.name} has been modified since last processing"
+                )
 
         self.logger.info(f"Audio file {event_type}: {file_path}")
 
@@ -188,8 +218,9 @@ class AudioFileHandler(FileSystemEventHandler):
                     stat = file_path.stat()
                     audio_file.timestamp = datetime.fromtimestamp(stat.st_mtime)
 
-                # Mark as processed
-                self.processed_files.add(file_key)
+                # Mark as processed with modification time
+                if file_path.exists():
+                    self.processed_files[file_key] = file_path.stat().st_mtime
 
                 # Process the file
                 success = self.watcher.process_file(audio_file)
@@ -202,18 +233,18 @@ class AudioFileHandler(FileSystemEventHandler):
                     self.logger.error(
                         f"Failed to process {event_type} file: {file_path}"
                     )
-                    # Remove from processed set so it can be retried
-                    self.processed_files.discard(file_key)
+                    # Remove from processed dict so it can be retried
+                    self.processed_files.pop(file_key, None)
 
             except Exception as e:
                 self.logger.error(f"Error handling {event_type} file {file_path}: {e}")
-                self.processed_files.discard(file_key)
+                self.processed_files.pop(file_key, None)
 
-        # Clean up old entries from processed_files set to prevent memory growth
+        # Clean up old entries from processed_files dict to prevent memory growth
         if len(self.processed_files) > 1000:
             # Keep only the most recent 500 entries
-            recent_files = list(self.processed_files)[-500:]
-            self.processed_files = set(recent_files)
+            items = list(self.processed_files.items())
+            self.processed_files = dict(items[-500:])
 
 
 class VoiceMemoWatcher:
@@ -373,9 +404,11 @@ class VoiceMemoWatcher:
 
     def _run_transcription_pipeline(self, audio_file: AudioFile) -> bool:
         """Run the transcription pipeline on an audio file."""
+        # Find the transcribe_pipeline.py script
+        script_path = Path(__file__).parent / "transcribe_pipeline.py"
         cmd = [
             sys.executable,
-            "transcribe_pipeline.py",
+            str(script_path),
             str(audio_file.path),
             "-O",
             str(self.transcript_out),
@@ -534,10 +567,10 @@ class VoiceMemoWatcher:
             self.logger.info(f"Audio output: {new_audio_path.absolute()}")
             self.logger.info(f"Transcript output: {new_transcript_path.absolute()}")
 
-            # Also print to stdout for immediate visibility
-            print(f"\nCreated files:")
-            print(f"  Audio: {new_audio_path.absolute()}")
-            print(f"  Transcript: {new_transcript_path.absolute()}")
+            # Also log to info for immediate visibility
+            self.logger.info(f"\nCreated files:")
+            self.logger.info(f"  Audio: {new_audio_path.absolute()}")
+            self.logger.info(f"  Transcript: {new_transcript_path.absolute()}")
 
             return True
 
@@ -594,6 +627,8 @@ class VoiceMemoWatcher:
 
         signal.signal(signal.SIGINT, signal_handler)
         signal.signal(signal.SIGTERM, signal_handler)
+        # Handle SIGHUP for background execution
+        signal.signal(signal.SIGHUP, signal_handler)
 
         total_processed = 0
         total_failed = 0
@@ -641,10 +676,10 @@ class VoiceMemoWatcher:
         finally:
             # Print final summary
             self.logger.info("Watch mode stopped")
-            print(f"\nFinal summary:")
-            print(f"  Total iterations: {iterations}")
-            print(f"  Total files processed: {total_processed}")
-            print(f"  Total failures: {total_failed}")
+            self.logger.info(f"\nFinal summary:")
+            self.logger.info(f"  Total iterations: {iterations}")
+            self.logger.info(f"  Total files processed: {total_processed}")
+            self.logger.info(f"  Total failures: {total_failed}")
 
             if total_failed > 0:
                 sys.exit(1)
@@ -658,6 +693,8 @@ class VoiceMemoWatcher:
 
         signal.signal(signal.SIGINT, signal_handler)
         signal.signal(signal.SIGTERM, signal_handler)
+        # Handle SIGHUP for background execution
+        signal.signal(signal.SIGHUP, signal_handler)
 
     def _setup_file_watchers(self, event_handler, observer) -> list:
         """Set up file system watchers for all input directories."""
@@ -751,11 +788,13 @@ class VoiceMemoWatcher:
 
         # Print final summary
         self.logger.info("FSEvents monitoring stopped")
-        print(f"\nFinal summary:")
-        print(f"  Initial files processed: {initial_results['processed']}")
-        print(f"  Initial failures: {initial_results['failed']}")
-        print("  Real-time processing: enabled")
-        print("  Note: Real-time processed files are logged individually above")
+        self.logger.info(f"\nFinal summary:")
+        self.logger.info(f"  Initial files processed: {initial_results['processed']}")
+        self.logger.info(f"  Initial failures: {initial_results['failed']}")
+        self.logger.info("  Real-time processing: enabled")
+        self.logger.info(
+            "  Note: Real-time processed files are logged individually above"
+        )
 
     def run_monitor_mode(self) -> None:
         """Run in FSEvents monitor mode, processing files as they appear."""
@@ -853,15 +892,32 @@ def _parse_arguments():
         default=60,
         help="Check interval in seconds for watch mode (default: 60)",
     )
+    parser.add_argument(
+        "--daemon",
+        "-d",
+        action="store_true",
+        help="Run as daemon (detach from terminal, log to file)",
+    )
     return parser.parse_args()
 
 
-def _setup_logging(verbose: bool):
+def _setup_logging(verbose: bool, daemon: bool = False):
     """Configure logging."""
-    logging.basicConfig(
-        level=logging.DEBUG if verbose else logging.INFO,
-        format="%(asctime)s - %(levelname)s - %(message)s",
-    )
+    if daemon:
+        # For daemon mode, log to file
+        log_file = Path.home() / ".voice_memo_watcher.log"
+        logging.basicConfig(
+            level=logging.DEBUG if verbose else logging.INFO,
+            format="%(asctime)s - %(levelname)s - %(message)s",
+            handlers=[
+                logging.FileHandler(log_file, mode="a"),
+            ],
+        )
+    else:
+        logging.basicConfig(
+            level=logging.DEBUG if verbose else logging.INFO,
+            format="%(asctime)s - %(levelname)s - %(message)s",
+        )
 
 
 def _get_directories_from_config(args):
@@ -906,7 +962,11 @@ def _get_directories_from_config(args):
 def _validate_arguments(args):
     """Validate command line arguments."""
     if args.watch and args.monitor:
-        print("Error: --watch and --monitor are mutually exclusive. Choose one.")
+        print(
+            "Error: --watch and --monitor are mutually exclusive. Choose one.",
+            file=sys.stderr,
+            flush=True,
+        )
         sys.exit(1)
 
 
@@ -923,10 +983,10 @@ def _run_watcher(args, watcher):
         results = watcher.run()
 
         # Print summary
-        print(f"\nProcessing complete:")
-        print(f"  Total files: {results['total']}")
-        print(f"  Processed: {results['processed']}")
-        print(f"  Failed: {results['failed']}")
+        print(f"\nProcessing complete:", flush=True)
+        print(f"  Total files: {results['total']}", flush=True)
+        print(f"  Processed: {results['processed']}", flush=True)
+        print(f"  Failed: {results['failed']}", flush=True)
 
         # Exit with error if any files failed
         sys.exit(1 if results["failed"] > 0 else 0)
@@ -936,7 +996,27 @@ def main():
     """Main function that orchestrates the voice memo watching process."""
     # Parse arguments and setup
     args = _parse_arguments()
-    _setup_logging(args.verbose)
+
+    # Handle daemon mode
+    if args.daemon:
+        # Detach from terminal
+        if os.fork() > 0:
+            # Parent process exits
+            sys.exit(0)
+
+        # Child process continues
+        os.setsid()  # Create new session
+
+        # Second fork to prevent zombie processes
+        if os.fork() > 0:
+            sys.exit(0)
+
+        # Redirect stdin/stdout/stderr
+        sys.stdin = open("/dev/null", "r")
+        sys.stdout = open("/dev/null", "w")
+        sys.stderr = open("/dev/null", "w")
+
+    _setup_logging(args.verbose, args.daemon)
     _validate_arguments(args)
 
     # Get directory configuration

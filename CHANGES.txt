@@ -1,5 +1,20 @@
 # CHANGES.txt - Transcribe Voicemails Project
 
+## Version 2.6.2 - 2025-01-24
+
+### Fixed Background Execution and Output Redirection Issues
+- **Problem**: voice_memo_watcher would hang when run in background or with output redirection
+- **Solutions**:
+  - Replaced print() statements with logger.info() or added flush=True to prevent buffering issues
+  - Added SIGHUP signal handler for proper background execution support
+  - Added --daemon flag that properly detaches from terminal and logs to file (~/.voice_memo_watcher.log)
+  - Added -u flag to shebang line for unbuffered Python output
+  - Error messages now properly go to stderr with flushing
+- **Usage**: 
+  - For background: `nohup ./voice_memo_watcher.py --watch &`
+  - As daemon: `./voice_memo_watcher.py --daemon --watch`
+  - With output redirection: `./voice_memo_watcher.py --watch > output.log 2>&1`
+
 ## Version 2.6.1 - 2025-01-23
 
 ### Fixed USB Drive Directory Notification Issue
@@ -487,6 +502,25 @@ All new functionality is covered by comprehensive test suites:
 - Run `cd test && python test_output_options.py` for output directory and file option tests
 - Both test suites include debug logging and proper error reporting
 - All test files organized in dedicated `test/` directory with `test_audio/` subdirectory for fixtures
+
+## Version 2.6.3 - 2025-06-28
+
+### Fixed File Detection Issue in Monitor Mode
+- **Problem**: Files were incorrectly marked as processed and not detected on subsequent directory events
+- **Root Cause**: The processed_files set only tracked file paths without considering modification times
+- **Solution**: Changed processed_files from set to dict to store file paths with modification times
+- **Benefits**: 
+  - Now properly detects when a file has been modified since last processing
+  - Handles Apple Voice Memo files with duplicate names but different timestamps
+  - Maintains quarantine functionality to prevent costly reprocessing of problematic files
+- **Technical Changes**:
+  - processed_files now stores {file_path: modification_time} mappings
+  - Added modification time comparison before skipping files
+  - Enhanced logging to show when files are skipped or have been modified
+  - Preserved existing quarantine logic for poison file protection
+  - Fixed transcribe_pipeline.py path resolution to work from any directory
+  - Added test_modification_time_tracking test to verify the new behavior
+  - All existing tests continue to pass
 
 ---
 
